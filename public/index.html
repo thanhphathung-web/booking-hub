@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Booking Hub — Hệ sinh thái Du lịch & Wellness</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --navy:#1F3864; --teal:#006B6B; --purple:#4A235A; --gold:#7B5E00; }
+  .badge-NEW        { @apply bg-blue-100 text-blue-800; }
+  .badge-CONFIRMED  { @apply bg-green-100 text-green-800; }
+  .badge-IN_PROGRESS{ @apply bg-yellow-100 text-yellow-800; }
+  .badge-COMPLETED  { @apply bg-gray-100 text-gray-700; }
+  .badge-CANCELLED  { @apply bg-red-100 text-red-700; }
+  .badge-WELLNESS   { @apply bg-purple-100 text-purple-800; }
+</style>
+</head>
+<body class="bg-gray-50 font-sans">
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-lg p-10 w-full max-w-md">
+    <div class="text-center mb-8">
+      <div class="text-4xl mb-2">🏝️</div>
+      <h1 class="text-2xl font-bold text-gray-800">Booking Hub</h1>
+      <p class="text-sm text-gray-500 mt-1">Hệ sinh thái Du lịch & Wellness</p>
+    </div>
+    <div id="loginError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+        <input id="loginUser" type="text" placeholder="vd: tpdh"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+        <input id="loginPass" type="password" placeholder="••••••"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <button onclick="doLogin()"
+        class="w-full bg-blue-900 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-800 transition">
+        Đăng nhập
+      </button>
+    </div>
+    <div class="mt-6 bg-gray-50 rounded-lg p-4 text-xs text-gray-500">
+      <p class="font-semibold mb-1">Tài khoản test:</p>
+      <p>ceo / ceo123 &nbsp;|&nbsp; tpdh / tpdh123 &nbsp;|&nbsp; cs / cs123</p>
+      <p>nvdh / nvdh123 &nbsp;|&nbsp; wc / wc123 &nbsp;|&nbsp; ketoan / kt123</p>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" class="hidden min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-blue-900 text-white flex flex-col fixed h-full">
+    <div class="p-5 border-b border-blue-800">
+      <div class="text-lg font-bold">🏝️ Booking Hub</div>
+      <div id="userInfo" class="text-xs text-blue-300 mt-1"></div>
+    </div>
+    <nav class="flex-1 p-4 space-y-1">
+      <a onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+        <span>📊</span><span>Dashboard</span>
+      </a>
+      <a onclick="showPage('bookings')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+        <span>📋</span><span>Booking List</span>
+      </a>
+      <a onclick="showPage('new-booking')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+        <span>➕</span><span>Tạo Booking mới</span>
+      </a>
+      <div id="navUsers" class="hidden">
+        <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+          <span>👥</span><span>Quản lý User</span>
+        </a>
+      </div>
+      <a onclick="showPage('checklist')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+        <span>✅</span><span>Checklist</span>
+      </a>
+    </nav>
+    <div class="p-4 border-t border-blue-800">
+      <button onclick="doLogout()" class="text-xs text-blue-300 hover:text-white transition">← Đăng xuất</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="ml-64 flex-1 p-8">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-2xl font-bold text-gray-800">Dashboard</h2>
+        <div class="flex gap-1.5">
+          <button onclick="loadDashboard(7)"  data-days="7"  class="dash-day-btn text-xs border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5 hover:border-blue-500 hover:text-blue-700 transition">7 ngày</button>
+          <button onclick="loadDashboard(30)" data-days="30" class="dash-day-btn text-xs border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5 hover:border-blue-500 hover:text-blue-700 transition">30 ngày</button>
+          <button onclick="loadDashboard(90)" data-days="90" class="dash-day-btn text-xs border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5 hover:border-blue-500 hover:text-blue-700 transition">3 tháng</button>
+          <button onclick="loadDashboard(0)"  data-days="0"  class="dash-day-btn text-xs border border-blue-900 bg-blue-900 text-white rounded-lg px-3 py-1.5 transition">Tất cả</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mb-6 flex-wrap">
+        <span class="text-sm text-gray-500">Từ ngày</span>
+        <input type="date" id="dashFrom" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <span class="text-sm text-gray-500">đến</span>
+        <input type="date" id="dashTo"   class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <button onclick="applyDateRange()" class="bg-blue-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-800 transition">Lọc</button>
+        <button id="clearRangeBtn" onclick="clearDateRange()" class="hidden text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition">✕ Xoá bộ lọc</button>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8" id="statCards"></div>
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="font-semibold text-gray-700 mb-4">Booking gần nhất</h3>
+        <div id="recentBookings"></div>
+      </div>
+    </div>
+
+    <!-- BOOKING LIST -->
+    <div id="page-bookings" class="page hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">Danh sách Booking</h2>
+        <button onclick="showPage('new-booking')"
+          class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
+          + Tạo mới
+        </button>
+      </div>
+      <!-- Filters -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3">
+        <input id="searchInput" type="text" placeholder="Tìm mã đơn, tên, SĐT..."
+          class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          oninput="filterBookings()"/>
+        <div class="relative" id="statusDropdownWrap">
+          <button type="button" onclick="toggleStatusDropdown()"
+            class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2 min-w-44 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span id="statusFilterLabel">Tất cả status</span>
+            <svg class="ml-auto w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div id="statusDropdownMenu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 min-w-44">
+            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="NEW" onchange="filterBookings()">
+              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">NEW</span>
+            </label>
+            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="CONFIRMED" onchange="filterBookings()">
+              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-800">CONFIRMED</span>
+            </label>
+            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="IN_PROGRESS" onchange="filterBookings()">
+              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-800">IN_PROGRESS</span>
+            </label>
+            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="COMPLETED" onchange="filterBookings()">
+              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-700">COMPLETED</span>
+            </label>
+            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="CANCELLED" onchange="filterBookings()">
+              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-700">CANCELLED</span>
+            </label>
+          </div>
+        </div>
+        <select id="typeFilter" onchange="filterBookings()"
+          class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Tất cả loại</option>
+          <option>STANDARD</option><option>WELLNESS</option>
+        </select>
+      </div>
+      <div id="bookingTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- BOOKING DETAIL -->
+    <div id="page-detail" class="page hidden">
+      <button onclick="showPage('bookings')" class="text-sm text-blue-700 hover:underline mb-4 flex items-center gap-1">
+        ← Quay lại danh sách
+      </button>
+      <div id="detailContent"></div>
+    </div>
+
+    <!-- NEW BOOKING -->
+    <div id="page-new-booking" class="page hidden">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">Tạo Booking mới</h2>
+      <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="label">Tên sản phẩm / Tour *</label>
+            <input id="f-product" class="input" placeholder="vd: Tour Đà Lạt 3N2Đ"/>
+          </div>
+          <div>
+            <label class="label">Ngày khởi hành *</label>
+            <input id="f-date" type="date" class="input"/>
+          </div>
+          <div>
+            <label class="label">Loại đơn</label>
+            <select id="f-type" class="input" onchange="toggleWellness()">
+              <option value="STANDARD">STANDARD</option>
+              <option value="WELLNESS">WELLNESS</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Người lớn</label>
+            <input id="f-adults" type="number" value="1" min="1" class="input"/>
+          </div>
+          <div>
+            <label class="label">Trẻ em</label>
+            <input id="f-children" type="number" value="0" min="0" class="input"/>
+          </div>
+          <div class="col-span-2 border-t pt-4 mt-2">
+            <p class="text-sm font-semibold text-gray-600 mb-3">Thông tin khách hàng</p>
+          </div>
+          <div>
+            <label class="label">Họ tên *</label>
+            <input id="f-cname" class="input" placeholder="Nguyễn Văn A"/>
+          </div>
+          <div>
+            <label class="label">SĐT *</label>
+            <input id="f-cphone" class="input" placeholder="09xxxxxxxx"/>
+          </div>
+          <div class="col-span-2">
+            <label class="label">Email</label>
+            <input id="f-cemail" class="input" placeholder="email@example.com" type="email"/>
+          </div>
+          <div class="col-span-2">
+            <label class="label">Yêu cầu đặc biệt</label>
+            <textarea id="f-special" class="input h-20" placeholder="Ăn chay, dị ứng, hỗ trợ xe lăn..."></textarea>
+          </div>
+          <div>
+            <label class="label">Số tiền (VNĐ)</label>
+            <input id="f-amount" type="number" value="0" class="input"/>
+          </div>
+          <div class="flex items-end pb-1">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input id="f-paid" type="checkbox" class="w-4 h-4"/>
+              <span>Đã thanh toán đủ</span>
+            </label>
+          </div>
+          <!-- Wellness extra -->
+          <div id="wellnessSection" class="col-span-2 hidden border-t pt-4 mt-2">
+            <p class="text-sm font-semibold text-purple-700 mb-3">🏥 Thông tin Wellness</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="label">Gói khám</label>
+                <input id="f-wpkg" class="input" placeholder="vd: Standard Health Check"/>
+              </div>
+              <div>
+                <label class="label">NCC Y tế</label>
+                <input id="f-wncc" class="input" placeholder="vd: Bệnh viện XYZ"/>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="formError" class="hidden mt-4 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+        <div class="mt-6 flex gap-3">
+          <button onclick="submitBooking()"
+            class="bg-blue-900 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-800">
+            Tạo Booking
+          </button>
+          <button onclick="showPage('bookings')"
+            class="border border-gray-300 px-6 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50">
+            Huỷ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS PAGE -->
+    <div id="page-users" class="page hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">Quản lý User</h2>
+        <button onclick="openCreateUser()"
+          class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
+          + Tạo User mới
+        </button>
+      </div>
+      <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- CREATE USER MODAL -->
+    <div id="modalCreateUser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <h3 class="text-lg font-bold mb-5">Tạo User mới</h3>
+        <div class="space-y-3">
+          <div>
+            <label class="label">Username *</label>
+            <input id="nu-username" class="input" placeholder="vd: nvdh2"/>
+          </div>
+          <div>
+            <label class="label">Mật khẩu *</label>
+            <input id="nu-password" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/>
+          </div>
+          <div>
+            <label class="label">Họ tên hiển thị *</label>
+            <input id="nu-name" class="input" placeholder="vd: Nguyễn Văn B"/>
+          </div>
+          <div>
+            <label class="label">Role *</label>
+            <select id="nu-role" class="input">
+              <option>CEO</option><option>TPDH</option><option>NVDH</option>
+              <option>CS</option><option>PM</option><option>WC</option><option>KETOAN</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Công ty</label>
+            <select id="nu-company" class="input">
+              <option>ALL</option><option>CTY1</option><option>CTY2</option><option>CTY3</option>
+            </select>
+          </div>
+        </div>
+        <div id="createUserError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+        <div class="mt-5 flex gap-3">
+          <button onclick="submitCreateUser()"
+            class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Tạo</button>
+          <button onclick="closeModal('modalCreateUser')"
+            class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANGE PASSWORD MODAL -->
+    <div id="modalChangePass" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+        <h3 class="text-lg font-bold mb-5">Đổi mật khẩu</h3>
+        <input id="cp-username" type="hidden"/>
+        <div class="space-y-3">
+          <div>
+            <label class="label">Mật khẩu mới *</label>
+            <input id="cp-newpass" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/>
+          </div>
+          <div>
+            <label class="label">Xác nhận lại *</label>
+            <input id="cp-confirm" type="password" class="input" placeholder="Nhập lại mật khẩu"/>
+          </div>
+        </div>
+        <div id="changePassError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+        <div class="mt-5 flex gap-3">
+          <button onclick="submitChangePass()"
+            class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+          <button onclick="closeModal('modalChangePass')"
+            class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- CHECKLIST PAGE -->
+    <div id="page-checklist" class="page hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">✅ Checklist</h2>
+        <div class="flex gap-3 items-center">
+          <span id="cl-dateLabel" class="text-sm text-gray-500"></span>
+          <button onclick="loadChecklist()" class="text-sm border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">🔄 Refresh</button>
+          <div id="navCeoSummary" class="hidden">
+            <button onclick="showPage('cl-summary')" class="bg-blue-900 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-800">📊 Xem team</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-semibold text-gray-700">Tiến độ hôm nay</span>
+          <span id="cl-progressLabel" class="text-sm font-bold text-blue-900"></span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-4">
+          <div id="cl-progressBar" class="bg-blue-900 h-4 rounded-full transition-all duration-500" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Daily -->
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
+            <span class="bg-blue-900 text-white text-xs px-2 py-1 rounded-full">MỖI NGÀY</span>
+            <span id="cl-daily-progress" class="text-sm text-gray-500"></span>
+          </h3>
+          <div id="cl-daily-list" class="space-y-2"></div>
+        </div>
+        <!-- Weekly -->
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
+            <span class="bg-teal-700 text-white text-xs px-2 py-1 rounded-full">MỖI TUẦN</span>
+            <span id="cl-weekly-progress" class="text-sm text-gray-500"></span>
+          </h3>
+          <div id="cl-weekly-list" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CEO SUMMARY PAGE -->
+    <div id="page-cl-summary" class="page hidden">
+      <div class="flex items-center gap-4 mb-6">
+        <button onclick="showPage('checklist')" class="text-sm text-blue-700 hover:underline">← Về checklist của tôi</button>
+        <h2 class="text-2xl font-bold text-gray-800">📊 Compliance Team</h2>
+      </div>
+      <div id="cl-summary-content"></div>
+    </div>
+
+  </main>
+</div>
+
+<style>
+.label { @apply block text-sm font-medium text-gray-700 mb-1; display:block;font-size:.875rem;font-weight:500;color:#374151;margin-bottom:.25rem; }
+.input  { @apply w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500; width:100%;border:1px solid #e5e7eb;border-radius:.5rem;padding:.625rem .75rem;font-size:.875rem; }
+.input:focus { outline:none;box-shadow:0 0 0 2px #3b82f6; }
+textarea.input { resize:vertical; }
+.nav-link.active { background:#1e40af; }
+</style>
+
+<script>
+const API = '';  // same origin
+let TOKEN = localStorage.getItem('bh_token');
+let USER  = JSON.parse(localStorage.getItem('bh_user') || 'null');
+let ALL_BOOKINGS = [];
+let CURRENT_BRIEF = '';
+
+// ── HTML escape ───────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── API helper ────────────────────────────────────────────
+async function api(path, opts={}) {
+  const res = await fetch(API + '/api' + path, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(opts.headers||{}) }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Lỗi server');
+  return data;
+}
+
+// ── Auth ──────────────────────────────────────────────────
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  try {
+    const data = await api('/auth/login', { method:'POST', body: JSON.stringify({username:u,password:p}) });
+    TOKEN = data.token; USER = data.user;
+    localStorage.setItem('bh_token', TOKEN);
+    localStorage.setItem('bh_user', JSON.stringify(USER));
+    showApp();
+  } catch(e) {
+    document.getElementById('loginError').classList.remove('hidden');
+    document.getElementById('loginError').textContent = e.message;
+  }
+}
+
+function doLogout() {
+  TOKEN = null; USER = null;
+  localStorage.removeItem('bh_token'); localStorage.removeItem('bh_user');
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+// ── App init ──────────────────────────────────────────────
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('userInfo').textContent = `${USER.name} (${USER.role}) · ${USER.company}`;
+  if (USER.role === 'CEO') {
+    document.getElementById('navUsers').classList.remove('hidden');
+    document.getElementById('navCeoSummary').classList.remove('hidden');
+  }
+  showPage('dashboard');
+}
+
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active','bg-blue-800'));
+  const el = document.getElementById(`page-${page}`);
+  if (el) el.classList.remove('hidden');
+  document.querySelectorAll('.nav-link').forEach(n => {
+    if (n.getAttribute('onclick')?.includes(page)) n.classList.add('bg-blue-800');
+  });
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'bookings')  loadBookings();
+  if (page === 'users')    loadUsers();
+  if (page === 'checklist') loadChecklist();
+  if (page === 'cl-summary') loadClSummary();
+}
+
+// ── Dashboard ─────────────────────────────────────────────
+let DASHBOARD_DAYS = 0;
+
+function setActiveDayBtn(days) {
+  document.querySelectorAll('.dash-day-btn').forEach(btn => {
+    const active = parseInt(btn.dataset.days) === days;
+    btn.className = `dash-day-btn text-xs border rounded-lg px-3 py-1.5 transition ${
+      active ? 'border-blue-900 bg-blue-900 text-white' : 'border-gray-300 text-gray-600 hover:border-blue-500 hover:text-blue-700'
+    }`;
+  });
+}
+
+async function loadDashboard(days, from, to) {
+  if (days === undefined && !from && !to) days = DASHBOARD_DAYS;
+  if (days !== undefined) {
+    DASHBOARD_DAYS = days;
+    setActiveDayBtn(days);
+    // Clear date range inputs when a day button is clicked
+    const fromEl = document.getElementById('dashFrom');
+    const toEl   = document.getElementById('dashTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    document.getElementById('clearRangeBtn')?.classList.add('hidden');
+  }
+
+  let statsQ = '', recentQ = '';
+  if (from || to) {
+    const p = new URLSearchParams();
+    if (from) p.set('from', from);
+    if (to)   p.set('to',   to);
+    statsQ = recentQ = '?' + p.toString();
+  } else if (days > 0) {
+    statsQ = recentQ = `?days=${days}`;
+  }
+
+  try {
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness } = await api(`/bookings/stats${statsQ}`);
+    const cards = [
+      { label:'Tổng booking',      value: total,                color:'bg-blue-900',   icon:'📋' },
+      { label:'Mới / Chờ confirm', value: newB,                 color:'bg-orange-500', icon:'🆕' },
+      { label:'Đang thực hiện',    value: inProgress+confirmed, color:'bg-teal-600',   icon:'🚀' },
+      { label:'Hoàn thành',        value: completed,            color:'bg-green-600',  icon:'✅' },
+      { label:'Wellness Package',  value: wellness,             color:'bg-purple-700', icon:'🏥' },
+    ];
+    document.getElementById('statCards').innerHTML = cards.map(c => `
+      <div class="${c.color} text-white rounded-xl p-5 cursor-pointer hover:opacity-90 transition">
+        <div class="text-3xl mb-1">${c.icon}</div>
+        <div class="text-3xl font-bold">${c.value}</div>
+        <div class="text-sm opacity-80 mt-1">${c.label}</div>
+      </div>`).join('');
+
+    const { bookings } = await api(`/bookings${recentQ}`);
+    const recent = bookings.slice(0, 5);
+    document.getElementById('recentBookings').innerHTML = recent.length === 0
+      ? '<p class="text-gray-400 text-sm">Chưa có booking nào</p>'
+      : `<table class="w-full text-sm"><thead class="text-left text-gray-500 border-b">
+          <tr><th class="pb-2">Mã đơn</th><th>Tour</th><th>Khách</th><th>Ngày KH</th><th>Status</th><th></th></tr>
+         </thead><tbody>
+         ${recent.map(b => `<tr class="border-b last:border-0 hover:bg-gray-50">
+           <td class="py-2.5 font-mono text-xs text-blue-700">${b.bookingId}</td>
+           <td class="py-2.5 max-w-32 truncate">${esc(b.product)}</td>
+           <td class="py-2.5">${esc(b.customer.name)}</td>
+           <td class="py-2.5">${b.tourDate}</td>
+           <td class="py-2.5">${statusBadge(b.status)}</td>
+           <td class="py-2.5"><button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Chi tiết</button></td>
+         </tr>`).join('')}
+         </tbody></table>`;
+  } catch(e) { console.error(e); }
+}
+
+function applyDateRange() {
+  const from = document.getElementById('dashFrom').value;
+  const to   = document.getElementById('dashTo').value;
+  if (!from && !to) return;
+  setActiveDayBtn(-1);  // deactivate all day buttons
+  DASHBOARD_DAYS = 0;
+  document.getElementById('clearRangeBtn').classList.remove('hidden');
+  loadDashboard(undefined, from, to);
+}
+
+function clearDateRange() {
+  document.getElementById('dashFrom').value = '';
+  document.getElementById('dashTo').value   = '';
+  document.getElementById('clearRangeBtn').classList.add('hidden');
+  loadDashboard(0);
+}
+
+// ── Bookings list ─────────────────────────────────────────
+async function loadBookings() {
+  try {
+    const data = await api('/bookings');
+    ALL_BOOKINGS = data.bookings;
+    renderTable(ALL_BOOKINGS);
+  } catch(e) { console.error(e); }
+}
+
+function toggleStatusDropdown() {
+  document.getElementById('statusDropdownMenu').classList.toggle('hidden');
+}
+
+function filterBookings() {
+  const search   = document.getElementById('searchInput').value.toLowerCase();
+  const selected = [...document.querySelectorAll('.status-cb:checked')].map(c => c.value);
+  const type     = document.getElementById('typeFilter').value;
+
+  // Update button label
+  const lbl = document.getElementById('statusFilterLabel');
+  if (selected.length === 0)      lbl.textContent = 'Tất cả status';
+  else if (selected.length === 1) lbl.textContent = selected[0];
+  else                            lbl.textContent = `${selected.length} status đã chọn`;
+
+  const filtered = ALL_BOOKINGS.filter(b => {
+    const matchSearch = !search ||
+      b.bookingId.toLowerCase().includes(search) ||
+      b.customer.name.toLowerCase().includes(search) ||
+      b.customer.phone.includes(search) ||
+      b.product.toLowerCase().includes(search);
+    const matchStatus = selected.length === 0 || selected.includes(b.status);
+    const matchType   = !type || b.type === type;
+    return matchSearch && matchStatus && matchType;
+  });
+  renderTable(filtered);
+}
+
+function renderTable(bookings) {
+  if (bookings.length === 0) {
+    document.getElementById('bookingTable').innerHTML = '<p class="text-gray-400 text-sm p-6">Không có booking nào</p>';
+    return;
+  }
+  document.getElementById('bookingTable').innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
+        <tr>
+          <th class="px-4 py-3">Mã đơn</th>
+          <th class="px-4 py-3">Tour / Sản phẩm</th>
+          <th class="px-4 py-3">Khách hàng</th>
+          <th class="px-4 py-3">Ngày KH</th>
+          <th class="px-4 py-3">Loại</th>
+          <th class="px-4 py-3">Status</th>
+          <th class="px-4 py-3">Action</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        ${bookings.map(b => `
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 font-mono text-xs text-blue-700">${b.bookingId}</td>
+          <td class="px-4 py-3 max-w-40">
+            <div class="font-medium truncate">${esc(b.product)}</div>
+            <div class="text-xs text-gray-400">${b.adults}N${b.children>0?'+'+b.children+'T':''}</div>
+          </td>
+          <td class="px-4 py-3">
+            <div>${esc(b.customer.name)}</div>
+            <div class="text-xs text-gray-400">${esc(b.customer.phone)}</div>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">${b.tourDate}</td>
+          <td class="px-4 py-3">${b.type === 'WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-500">STD</span>'}</td>
+          <td class="px-4 py-3">${statusBadge(b.status)}</td>
+          <td class="px-4 py-3">
+            <button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Xem</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── Booking Detail ────────────────────────────────────────
+async function showDetail(id) {
+  showPage('detail');
+  try {
+    const { booking: b } = await api(`/bookings/${id}`);
+    const { brief } = await api(`/bookings/${id}/brief`);
+    CURRENT_BRIEF = brief;
+
+    document.getElementById('detailContent').innerHTML = `
+      <div class="grid grid-cols-3 gap-6">
+
+        <!-- Left col: booking info -->
+        <div class="col-span-2 space-y-4">
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <h3 class="text-xl font-bold text-gray-800">${esc(b.product)}</h3>
+                <p class="text-sm text-gray-500 font-mono">${b.bookingId}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                ${b.type==='WELLNESS' ? '<span class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">WELLNESS</span>' : ''}
+                ${statusBadge(b.status)}
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div><span class="text-gray-500">Ngày khởi hành:</span> <strong>${b.tourDate}</strong></div>
+              <div><span class="text-gray-500">Số khách:</span> <strong>${b.adults} NL${b.children>0?' + '+b.children+' TE':''}</strong></div>
+              <div><span class="text-gray-500">Khách hàng:</span> <strong>${esc(b.customer.name)}</strong></div>
+              <div><span class="text-gray-500">SĐT:</span> <strong>${esc(b.customer.phone)}</strong></div>
+              <div><span class="text-gray-500">Email:</span> <strong>${b.customer.email ? esc(b.customer.email) : '—'}</strong></div>
+              <div><span class="text-gray-500">Nguồn:</span> <strong>${esc(b.source)}</strong></div>
+              <div class="col-span-2"><span class="text-gray-500">Yêu cầu ĐB:</span> <strong class="${b.specialReqs?'text-orange-600':''}">${esc(b.specialReqs)||'Không có'}</strong></div>
+              <div><span class="text-gray-500">Thanh toán:</span> <strong class="${b.payment.paid?'text-green-600':'text-orange-500'}">${b.payment.paid?'✅ Đã TT':'⚠️ '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</strong></div>
+              <div><span class="text-gray-500">NVDH Cty1:</span> <strong>${esc(b.assignedTo)||'Chưa phân công'}</strong></div>
+              ${b.type==='WELLNESS' ? `<div><span class="text-gray-500">WC Cty3:</span> <strong>${esc(b.wcAssigned)||'Chưa phân công'}</strong></div>
+              <div><span class="text-gray-500">Gói khám:</span> <strong>${esc(b.wellness?.package)||'—'}</strong></div>` : ''}
+            </div>
+          </div>
+
+          <!-- Status update -->
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">Cập nhật Status</h4>
+            <div class="flex gap-2 flex-wrap">
+              ${['NEW','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'].map(s =>
+                `<button onclick="updateStatus('${b.bookingId}','${s}')"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${b.status===s?'bg-blue-900 text-white border-blue-900':'border-gray-300 hover:border-blue-500 hover:text-blue-700'}">
+                  ${s}
+                </button>`).join('')}
+            </div>
+            <div class="mt-3 flex gap-2">
+              <input id="statusNote" placeholder="Ghi chú (optional)" class="input flex-1 text-xs"/>
+            </div>
+          </div>
+
+          <!-- Assign -->
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">Phân công nhân sự</h4>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">NVDH (Cty1)</label>
+                <input id="assignNvdh" class="input text-sm" placeholder="username NVDH" value="${esc(b.assignedTo)||''}"/>
+              </div>
+              ${b.type==='WELLNESS' ? `<div>
+                <label class="text-xs text-gray-500 block mb-1">WC (Cty3)</label>
+                <input id="assignWc" class="input text-sm" placeholder="username WC" value="${esc(b.wcAssigned)||''}"/>
+              </div>` : '<div></div>'}
+            </div>
+            <button data-id="${b.bookingId}" onclick="assignBooking(this.dataset.id)"
+              class="mt-3 bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-600">
+              Cập nhật phân công
+            </button>
+          </div>
+
+          <!-- Notes -->
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">Ghi chú nội bộ</h4>
+            <div class="space-y-2 mb-3 max-h-48 overflow-y-auto">
+              ${(b.notes||[]).length === 0 ? '<p class="text-gray-400 text-sm">Chưa có ghi chú</p>'
+                : b.notes.map(n => `<div class="bg-gray-50 rounded-lg p-3 text-sm">
+                    <p>${esc(n.text)}</p>
+                    <p class="text-xs text-gray-400 mt-1">${esc(n.name)} · ${new Date(n.at).toLocaleString('vi-VN')}</p>
+                  </div>`).join('')}
+            </div>
+            <div class="flex gap-2">
+              <input id="noteInput" placeholder="Thêm ghi chú..." class="input flex-1 text-sm"/>
+              <button onclick="addNote('${b.bookingId}')" class="bg-gray-700 text-white px-4 rounded-lg text-sm hover:bg-gray-600">Gửi</button>
+            </div>
+          </div>
+
+          <!-- History -->
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">Lịch sử trạng thái</h4>
+            <div class="space-y-2">
+              ${(b.statusHistory||[]).map(h => `
+                <div class="flex items-center gap-3 text-sm">
+                  <span class="w-2 h-2 bg-blue-900 rounded-full flex-shrink-0"></span>
+                  <span>${statusBadge(h.status)}</span>
+                  <span class="text-gray-500 text-xs">bởi ${esc(h.by)} · ${new Date(h.at).toLocaleString('vi-VN')}</span>
+                  ${h.note ? `<span class="text-gray-600 italic text-xs">— ${esc(h.note)}</span>` : ''}
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- Right col: brief -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">📋 Booking Brief</h4>
+            <p class="text-xs text-gray-500 mb-3">Copy và gửi cho Cty1 qua email/Zalo</p>
+            <pre id="briefPre" class="text-xs bg-gray-50 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono border"></pre>
+            <button onclick="copyBrief()"
+              class="mt-3 w-full bg-blue-900 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
+              📋 Copy Brief
+            </button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('briefPre').textContent = brief;
+  } catch(e) {
+    document.getElementById('detailContent').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl">${esc(e.message)}</div>`;
+  }
+}
+
+async function updateStatus(id, status) {
+  try {
+    const note = document.getElementById('statusNote')?.value || '';
+    await api(`/bookings/${id}/status`, { method:'PATCH', body: JSON.stringify({status, note}) });
+    showDetail(id);
+  } catch(e) { alert(e.message); }
+}
+
+async function addNote(id) {
+  const text = document.getElementById('noteInput').value.trim();
+  if (!text) return;
+  try {
+    await api(`/bookings/${id}/note`, { method:'POST', body: JSON.stringify({text}) });
+    showDetail(id);
+  } catch(e) { alert(e.message); }
+}
+
+async function assignBooking(id) {
+  const assignedTo = document.getElementById('assignNvdh')?.value.trim();
+  const wcAssigned = document.getElementById('assignWc')?.value.trim();
+  try {
+    await api(`/bookings/${id}/assign`, { method:'PATCH', body: JSON.stringify({assignedTo, wcAssigned}) });
+    showDetail(id);
+  } catch(e) { alert(e.message); }
+}
+
+function copyBrief() {
+  navigator.clipboard.writeText(CURRENT_BRIEF).then(() => alert('✅ Đã copy Booking Brief!'));
+}
+
+// ── New Booking form ──────────────────────────────────────
+function toggleWellness() {
+  const isW = document.getElementById('f-type').value === 'WELLNESS';
+  document.getElementById('wellnessSection').classList.toggle('hidden', !isW);
+}
+
+async function submitBooking() {
+  const err = (msg) => {
+    const el = document.getElementById('formError');
+    el.textContent = msg; el.classList.remove('hidden');
+  };
+  const product  = document.getElementById('f-product').value.trim();
+  const tourDate = document.getElementById('f-date').value;
+  const cname    = document.getElementById('f-cname').value.trim();
+  const cphone   = document.getElementById('f-cphone').value.trim();
+  if (!product)  return err('Vui lòng nhập tên tour/sản phẩm');
+  if (!tourDate) return err('Vui lòng chọn ngày khởi hành');
+  if (!cname)    return err('Vui lòng nhập tên khách hàng');
+  if (!cphone)   return err('Vui lòng nhập SĐT khách hàng');
+
+  const body = {
+    product, tourDate,
+    adults:   parseInt(document.getElementById('f-adults').value)||1,
+    children: parseInt(document.getElementById('f-children').value)||0,
+    customer: { name: cname, phone: cphone, email: document.getElementById('f-cemail').value },
+    specialReqs: document.getElementById('f-special').value,
+    type: document.getElementById('f-type').value,
+    payment: { amount: parseInt(document.getElementById('f-amount').value)||0, paid: document.getElementById('f-paid').checked },
+    source: 'ADMIN',
+    wellness: document.getElementById('f-type').value === 'WELLNESS' ? {
+      package: document.getElementById('f-wpkg').value,
+      ncc: document.getElementById('f-wncc').value,
+    } : {},
+  };
+
+  try {
+    const data = await api('/bookings', { method:'POST', body: JSON.stringify(body) });
+    ['f-product','f-date','f-cname','f-cphone','f-cemail','f-special','f-wpkg','f-wncc']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('f-adults').value = '1';
+    document.getElementById('f-children').value = '0';
+    document.getElementById('f-amount').value = '0';
+    document.getElementById('f-paid').checked = false;
+    document.getElementById('f-type').value = 'STANDARD';
+    document.getElementById('wellnessSection').classList.add('hidden');
+    document.getElementById('formError').classList.add('hidden');
+    showDetail(data.booking.bookingId);
+  } catch(e) { err(e.message); }
+}
+
+// ── Helpers ───────────────────────────────────────────────
+function statusBadge(status) {
+  const colors = {
+    NEW:         'bg-blue-100 text-blue-800',
+    CONFIRMED:   'bg-green-100 text-green-800',
+    IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
+    COMPLETED:   'bg-gray-100 text-gray-700',
+    CANCELLED:   'bg-red-100 text-red-700',
+  };
+  return `<span class="text-xs px-2 py-0.5 rounded-full font-semibold ${colors[status]||'bg-gray-100 text-gray-600'}">${status}</span>`;
+}
+
+// ── Auto-login if token exists ────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (TOKEN && USER) showApp();
+  document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#statusDropdownWrap')) {
+      document.getElementById('statusDropdownMenu')?.classList.add('hidden');
+    }
+  });
+});
+
+// ── Users ─────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const { users } = await api('/users');
+    const roleColors = {
+      CEO:'bg-red-100 text-red-800', TPDH:'bg-blue-100 text-blue-800',
+      NVDH:'bg-teal-100 text-teal-800', CS:'bg-green-100 text-green-800',
+      PM:'bg-purple-100 text-purple-800', WC:'bg-pink-100 text-pink-800',
+      KETOAN:'bg-yellow-100 text-yellow-800'
+    };
+    document.getElementById('userTable').innerHTML = `
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
+          <tr>
+            <th class="px-4 py-3">Username</th>
+            <th class="px-4 py-3">Họ tên</th>
+            <th class="px-4 py-3">Role</th>
+            <th class="px-4 py-3">Công ty</th>
+            <th class="px-4 py-3">Trạng thái</th>
+            <th class="px-4 py-3">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          ${users.map(u => `
+          <tr class="hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}">
+            <td class="px-4 py-3 font-mono font-semibold">${esc(u.username)}</td>
+            <td class="px-4 py-3">${esc(u.name)}</td>
+            <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full font-semibold ${roleColors[u.role]||'bg-gray-100 text-gray-700'}">${esc(u.role)}</span></td>
+            <td class="px-4 py-3 text-gray-500">${esc(u.company)}</td>
+            <td class="px-4 py-3">
+              ${u.active !== false
+                ? '<span class="text-xs text-green-600 font-semibold">✅ Active</span>'
+                : '<span class="text-xs text-red-500 font-semibold">🔒 Bị khoá</span>'}
+            </td>
+            <td class="px-4 py-3 flex gap-2 flex-wrap">
+              <button data-u="${esc(u.username)}" onclick="openChangePass(this.dataset.u)"
+                class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔑 Đổi pass</button>
+              <button data-u="${esc(u.username)}" onclick="toggleUser(this.dataset.u)"
+                class="text-xs border px-2 py-1 rounded ${u.active !== false ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">
+                ${u.active !== false ? '🔒 Khoá' : '🔓 Mở'}
+              </button>
+              ${u.username !== USER.username ? `<button data-u="${esc(u.username)}" data-n="${esc(u.name)}" onclick="deleteUser(this.dataset.u, this.dataset.n)"
+                class="text-xs border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50">🗑 Xoá</button>` : ''}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) { console.error(e); }
+}
+
+function openCreateUser() {
+  ['nu-username','nu-password','nu-name'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('createUserError').classList.add('hidden');
+  document.getElementById('modalCreateUser').classList.remove('hidden');
+}
+
+async function submitCreateUser() {
+  const username = document.getElementById('nu-username').value.trim();
+  const password = document.getElementById('nu-password').value;
+  const name     = document.getElementById('nu-name').value.trim();
+  const role     = document.getElementById('nu-role').value;
+  const company  = document.getElementById('nu-company').value;
+  const errEl    = document.getElementById('createUserError');
+  if (!username || !password || !name) {
+    errEl.textContent = 'Vui lòng điền đầy đủ thông tin'; errEl.classList.remove('hidden'); return;
+  }
+  if (password.length < 6) {
+    errEl.textContent = 'Mật khẩu tối thiểu 6 ký tự'; errEl.classList.remove('hidden'); return;
+  }
+  try {
+    await api('/users', { method:'POST', body: JSON.stringify({username,password,name,role,company}) });
+    closeModal('modalCreateUser');
+    loadUsers();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+function openChangePass(username) {
+  document.getElementById('cp-username').value = username;
+  document.getElementById('cp-newpass').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('changePassError').classList.add('hidden');
+  document.getElementById('modalChangePass').classList.remove('hidden');
+}
+
+async function submitChangePass() {
+  const username = document.getElementById('cp-username').value;
+  const newPass  = document.getElementById('cp-newpass').value;
+  const confirm  = document.getElementById('cp-confirm').value;
+  const errEl    = document.getElementById('changePassError');
+  if (newPass.length < 6) { errEl.textContent = 'Tối thiểu 6 ký tự'; errEl.classList.remove('hidden'); return; }
+  if (newPass !== confirm) { errEl.textContent = 'Mật khẩu xác nhận không khớp'; errEl.classList.remove('hidden'); return; }
+  try {
+    await api(`/users/${username}/password`, { method:'PATCH', body: JSON.stringify({newPassword: newPass}) });
+    closeModal('modalChangePass');
+    alert(`✅ Đã đổi mật khẩu cho ${username}`);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function toggleUser(username) {
+  if (!confirm(`Khoá/mở khoá tài khoản ${username}?`)) return;
+  try {
+    const res = await api(`/users/${username}/toggle`, { method:'PATCH' });
+    alert(`✅ ${res.message}`);
+    loadUsers();
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteUser(username, name) {
+  if (!confirm(`Xoá tài khoản "${name}" (${username})? Hành động này không thể hoàn tác.`)) return;
+  try {
+    await api(`/users/${username}`, { method:'DELETE' });
+    loadUsers();
+  } catch(e) { alert(e.message); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// ── Checklist ─────────────────────────────────────────────
+let CL_ITEMS = [];
+
+async function loadChecklist() {
+  try {
+    const data = await api('/checklists');
+    CL_ITEMS = data.items;
+    const today = new Date().toLocaleDateString('vi-VN', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    document.getElementById('cl-dateLabel').textContent = today;
+
+    const daily  = CL_ITEMS.filter(i => i.freq === 'DAILY');
+    const weekly = CL_ITEMS.filter(i => i.freq === 'WEEKLY');
+
+    renderClList('cl-daily-list',  daily);
+    renderClList('cl-weekly-list', weekly);
+
+    const doneD = daily.filter(i=>i.done).length;
+    const doneW = weekly.filter(i=>i.done).length;
+    const total = daily.length + weekly.length;
+    const done  = doneD + doneW;
+    const pct   = total ? Math.round(done/total*100) : 0;
+
+    document.getElementById('cl-progressBar').style.width = pct + '%';
+    document.getElementById('cl-progressBar').className = 'h-4 rounded-full transition-all duration-500 ' +
+      (pct===100 ? 'bg-green-500' : pct>=60 ? 'bg-blue-900' : 'bg-orange-500');
+    document.getElementById('cl-progressLabel').textContent = `${done}/${total} (${pct}%)`;
+    document.getElementById('cl-daily-progress').textContent  = `${doneD}/${daily.length}`;
+    document.getElementById('cl-weekly-progress').textContent = `${doneW}/${weekly.length}`;
+  } catch(e) { console.error(e); }
+}
+
+function renderClList(containerId, items) {
+  const el = document.getElementById(containerId);
+  if (items.length === 0) { el.innerHTML = '<p class="text-gray-400 text-sm">Không có task nào</p>'; return; }
+  el.innerHTML = items.map(item => `
+    <div class="flex items-start gap-3 p-3 rounded-lg border transition ${item.done ? 'bg-green-50 border-green-200' : 'border-gray-100 hover:border-blue-200'}" id="cl-item-${item.id}">
+      <button onclick="toggleCl('${item.id}',${item.done})"
+        class="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition mt-0.5
+          ${item.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-blue-500'}">
+        ${item.done ? '✓' : ''}
+      </button>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold ${item.done ? 'line-through text-gray-400' : 'text-gray-800'}">${esc(item.title)}</p>
+        <p class="text-xs text-gray-500 mt-0.5">${esc(item.detail)}</p>
+        ${item.sop ? `<span class="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded mt-1 inline-block">${esc(item.sop)}</span>` : ''}
+      </div>
+      ${item.done ? '<span class="text-green-500 text-xs flex-shrink-0 mt-1">✅ Done</span>' : ''}
+    </div>`).join('');
+}
+
+async function toggleCl(itemId, isDone) {
+  try {
+    if (isDone) {
+      await api(`/checklists/${itemId}/complete`, { method:'DELETE' });
+    } else {
+      await api(`/checklists/${itemId}/complete`, { method:'POST' });
+    }
+    await loadChecklist();
+  } catch(e) { alert(e.message); }
+}
+
+// CEO Summary
+async function loadClSummary() {
+  try {
+    const { summary, dailyKey, weeklyKey } = await api('/checklists/summary');
+    const roleColors = { CS:'teal', TPDH:'blue', NVDH:'blue', WC:'purple', KETOAN:'yellow' };
+    const roleNames  = { CS:'Customer Service / CTY2', TPDH:'Trưởng Phòng ĐH / CTY1', NVDH:'NV Điều Hành / CTY1', WC:'Wellness Coordinator / CTY3', KETOAN:'Kế Toán / ALL' };
+
+    const byRole = {};
+    summary.forEach(s => { if (!byRole[s.role]) byRole[s.role] = []; byRole[s.role].push(s); });
+
+    document.getElementById('cl-summary-content').innerHTML = `
+      <div class="mb-4 text-sm text-gray-500">Ngày: <strong>${dailyKey}</strong> &nbsp;|&nbsp; Tuần: <strong>${weeklyKey}</strong></div>
+      ${Object.entries(byRole).map(([role, users]) => `
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-4">
+        <h3 class="font-bold text-gray-700 mb-4">${roleNames[role] || role}</h3>
+        <div class="space-y-3">
+          ${users.map(u => `
+          <div class="flex items-center gap-4">
+            <div class="w-32 text-sm font-semibold">${esc(u.name)}</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs text-gray-500 w-16">Hằng ngày</span>
+                <div class="flex-1 bg-gray-100 rounded-full h-2.5">
+                  <div class="h-2.5 rounded-full ${u.daily.pct===100?'bg-green-500':u.daily.pct>=50?'bg-blue-600':'bg-orange-400'}"
+                    style="width:${u.daily.pct}%"></div>
+                </div>
+                <span class="text-xs font-bold w-16 text-right">${u.daily.done}/${u.daily.total} (${u.daily.pct}%)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500 w-16">Hàng tuần</span>
+                <div class="flex-1 bg-gray-100 rounded-full h-2.5">
+                  <div class="h-2.5 rounded-full ${u.weekly.pct===100?'bg-green-500':u.weekly.pct>=50?'bg-teal-600':'bg-orange-400'}"
+                    style="width:${u.weekly.pct}%"></div>
+                </div>
+                <span class="text-xs font-bold w-16 text-right">${u.weekly.done}/${u.weekly.total} (${u.weekly.pct}%)</span>
+              </div>
+            </div>
+            <div class="text-2xl">${u.daily.pct===100?'🌟':u.daily.pct>=50?'🔄':'⚠️'}</div>
+          </div>`).join('')}
+        </div>
+      </div>`).join('')}`;
+  } catch(e) { document.getElementById('cl-summary-content').innerHTML = `<p class="text-red-600">${e.message}</p>`; }
+}
+</script>
+</body>
+</html>
