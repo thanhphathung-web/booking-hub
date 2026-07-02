@@ -5,16 +5,52 @@
 <title>Booking Hub — Hệ sinh thái Du lịch & Wellness</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  :root { --navy:#1F3864; --teal:#006B6B; --purple:#4A235A; --gold:#7B5E00; }
-  .badge-NEW        { @apply bg-blue-100 text-blue-800; }
-  .badge-CONFIRMED  { @apply bg-green-100 text-green-800; }
-  .badge-IN_PROGRESS{ @apply bg-yellow-100 text-yellow-800; }
-  .badge-COMPLETED  { @apply bg-gray-100 text-gray-700; }
-  .badge-CANCELLED  { @apply bg-red-100 text-red-700; }
-  .badge-WELLNESS   { @apply bg-purple-100 text-purple-800; }
+  :root { --navy:#1F3864; --teal:#006B6B; --purple:#4A235A; }
+  .page { display:none; }
+  .page.active { display:block; }
+  .nav-link.active { background:rgba(255,255,255,0.15); }
+  .label { display:block;font-size:.875rem;font-weight:500;color:#374151;margin-bottom:.25rem; }
+  .input { width:100%;border:1px solid #e5e7eb;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;outline:none;transition:box-shadow .15s; }
+  .input:focus { box-shadow:0 0 0 2px #3b82f6; }
+  textarea.input { resize:vertical; }
+
+  /* Toast */
+  #toast-container { position:fixed;top:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;pointer-events:none; }
+  .toast { display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-radius:.75rem;font-size:.875rem;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);pointer-events:auto;animation:slideIn .25s ease;min-width:280px;max-width:380px; }
+  .toast-success { background:#ecfdf5;color:#065f46;border:1px solid #6ee7b7; }
+  .toast-error   { background:#fef2f2;color:#991b1b;border:1px solid #fca5a5; }
+  .toast-warn    { background:#fffbeb;color:#92400e;border:1px solid #fcd34d; }
+  .toast-info    { background:#eff6ff;color:#1e40af;border:1px solid #93c5fd; }
+  @keyframes slideIn { from{opacity:0;transform:translateX(1rem)} to{opacity:1;transform:translateX(0)} }
+  @keyframes fadeOut { to{opacity:0;transform:translateX(1rem)} }
+
+  /* Urgent row */
+  .row-urgent { background:#fff7ed !important; }
+  .row-urgent:hover { background:#ffedd5 !important; }
+  .row-overdue { background:#fef2f2 !important; }
+  .row-overdue:hover { background:#fee2e2 !important; }
+
+  /* Sidebar mobile */
+  @media(max-width:768px){
+    #sidebar { transform:translateX(-100%);transition:transform .25s; }
+    #sidebar.open { transform:translateX(0); }
+    #main-content { margin-left:0!important; }
+    #overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:30; }
+    #overlay.open { display:block; }
+  }
+
+  /* Skeleton */
+  .skeleton { background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:.5rem; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 </style>
 </head>
 <body class="bg-gray-50 font-sans">
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Overlay for mobile sidebar -->
+<div id="overlay" onclick="closeSidebar()"></div>
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center">
@@ -27,17 +63,14 @@
     <div id="loginError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm"></div>
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
-        <input id="loginUser" type="text" placeholder="vd: tpdh"
-          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <label class="label">Tên đăng nhập</label>
+        <input id="loginUser" type="text" placeholder="vd: tpdh" class="input"/>
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
-        <input id="loginPass" type="password" placeholder="••••••"
-          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <label class="label">Mật khẩu</label>
+        <input id="loginPass" type="password" placeholder="••••••" class="input"/>
       </div>
-      <button onclick="doLogin()"
-        class="w-full bg-blue-900 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-800 transition">
+      <button onclick="doLogin()" class="w-full bg-blue-900 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-800 transition">
         Đăng nhập
       </button>
     </div>
@@ -53,40 +86,63 @@
 <div id="mainApp" class="hidden min-h-screen flex">
 
   <!-- Sidebar -->
-  <aside class="w-64 bg-blue-900 text-white flex flex-col fixed h-full">
-    <div class="p-5 border-b border-blue-800">
-      <div class="text-lg font-bold">🏝️ Booking Hub</div>
-      <div id="userInfo" class="text-xs text-blue-300 mt-1"></div>
+  <aside id="sidebar" class="w-64 bg-blue-900 text-white flex flex-col fixed h-full z-40">
+    <div class="p-5 border-b border-blue-800 flex items-center justify-between">
+      <div>
+        <div class="text-lg font-bold">🏝️ Booking Hub</div>
+        <div id="userInfo" class="text-xs text-blue-300 mt-0.5"></div>
+      </div>
+      <button class="md:hidden text-blue-300 hover:text-white" onclick="closeSidebar()">✕</button>
     </div>
-    <nav class="flex-1 p-4 space-y-1">
-      <a onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+    <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      <a onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>📊</span><span>Dashboard</span>
       </a>
-      <a onclick="showPage('bookings')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+      <a onclick="showPage('bookings')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>📋</span><span>Booking List</span>
       </a>
-      <a onclick="showPage('new-booking')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+      <a onclick="showPage('new-booking')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>➕</span><span>Tạo Booking mới</span>
       </a>
       <div id="navUsers" class="hidden">
-        <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+        <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
           <span>👥</span><span>Quản lý User</span>
         </a>
       </div>
-      <a onclick="showPage('checklist')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition">
+      <div id="navKetoan" class="hidden">
+        <a onclick="showPage('revenue')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+          <span>💰</span><span>Doanh thu</span>
+        </a>
+      </div>
+      <a onclick="showPage('checklist')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>✅</span><span>Checklist</span>
       </a>
     </nav>
     <div class="p-4 border-t border-blue-800">
-      <button onclick="doLogout()" class="text-xs text-blue-300 hover:text-white transition">← Đăng xuất</button>
+      <button onclick="doLogout()" class="text-xs text-blue-300 hover:text-white transition flex items-center gap-2">
+        <span>←</span><span>Đăng xuất</span>
+      </button>
     </div>
   </aside>
 
   <!-- Main content -->
-  <main class="ml-64 flex-1 p-8">
+  <main id="main-content" class="ml-64 flex-1 p-6 md:p-8">
+
+    <!-- Mobile hamburger -->
+    <button class="md:hidden fixed top-4 left-4 z-50 bg-blue-900 text-white p-2 rounded-lg shadow-lg" onclick="openSidebar()">☰</button>
 
     <!-- DASHBOARD -->
     <div id="page-dashboard" class="page">
+      <!-- Urgent alert banner -->
+      <div id="urgentBanner" class="hidden mb-4 bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-center gap-3">
+        <span class="text-2xl">⚠️</span>
+        <div>
+          <p class="font-semibold text-orange-800" id="urgentBannerText"></p>
+          <p class="text-sm text-orange-600">Tour khởi hành trong 3 ngày nhưng chưa phân công NVDH</p>
+        </div>
+        <button onclick="filterUrgent()" class="ml-auto text-xs bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700">Xem ngay</button>
+      </div>
+
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-2xl font-bold text-gray-800">Dashboard</h2>
         <div class="flex gap-1.5">
@@ -98,11 +154,11 @@
       </div>
       <div class="flex items-center gap-2 mb-6 flex-wrap">
         <span class="text-sm text-gray-500">Từ ngày</span>
-        <input type="date" id="dashFrom" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        <input type="date" id="dashFrom" class="input" style="width:auto"/>
         <span class="text-sm text-gray-500">đến</span>
-        <input type="date" id="dashTo"   class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-        <button onclick="applyDateRange()" class="bg-blue-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-800 transition">Lọc</button>
-        <button id="clearRangeBtn" onclick="clearDateRange()" class="hidden text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition">✕ Xoá bộ lọc</button>
+        <input type="date" id="dashTo"   class="input" style="width:auto"/>
+        <button onclick="applyDateRange()" class="bg-blue-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-800 transition">Lọc</button>
+        <button id="clearRangeBtn" onclick="clearDateRange()" class="hidden text-xs border border-gray-300 text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-50 transition">✕ Xoá lọc</button>
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8" id="statCards"></div>
       <div class="bg-white rounded-xl shadow-sm p-6">
@@ -112,59 +168,76 @@
     </div>
 
     <!-- BOOKING LIST -->
-    <div id="page-bookings" class="page hidden">
-      <div class="flex items-center justify-between mb-6">
+    <div id="page-bookings" class="page">
+      <div class="flex items-center justify-between mb-5">
         <h2 class="text-2xl font-bold text-gray-800">Danh sách Booking</h2>
-        <button onclick="showPage('new-booking')"
-          class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
-          + Tạo mới
-        </button>
+        <button onclick="showPage('new-booking')" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo mới</button>
       </div>
-      <!-- Filters -->
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3">
-        <input id="searchInput" type="text" placeholder="Tìm mã đơn, tên, SĐT..."
-          class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          oninput="filterBookings()"/>
-        <div class="relative" id="statusDropdownWrap">
-          <button type="button" onclick="toggleStatusDropdown()"
-            class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2 min-w-44 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <span id="statusFilterLabel">Tất cả status</span>
-            <svg class="ml-auto w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-          </button>
-          <div id="statusDropdownMenu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 min-w-44">
-            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="NEW" onchange="filterBookings()">
-              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">NEW</span>
-            </label>
-            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="CONFIRMED" onchange="filterBookings()">
-              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-800">CONFIRMED</span>
-            </label>
-            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="IN_PROGRESS" onchange="filterBookings()">
-              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-800">IN_PROGRESS</span>
-            </label>
-            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="COMPLETED" onchange="filterBookings()">
-              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-700">COMPLETED</span>
-            </label>
-            <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700 flex-shrink-0" value="CANCELLED" onchange="filterBookings()">
-              <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-700">CANCELLED</span>
-            </label>
+
+      <!-- Filters row 1 -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 space-y-3">
+        <div class="flex flex-wrap gap-3">
+          <input id="searchInput" type="text" placeholder="🔍 Tìm mã đơn, tên, SĐT, tour..."
+            class="input flex-1 min-w-48" oninput="debounceFilter()"/>
+          <!-- Status multi-select -->
+          <div class="relative" id="statusDropdownWrap">
+            <button type="button" onclick="toggleStatusDropdown()"
+              class="input flex items-center gap-2 min-w-44 cursor-pointer bg-white">
+              <span id="statusFilterLabel">Tất cả status</span>
+              <svg class="ml-auto w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="statusDropdownMenu" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 min-w-44">
+              <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700" value="NEW" onchange="applyFilters()">
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">NEW</span>
+              </label>
+              <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700" value="CONFIRMED" onchange="applyFilters()">
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-800">CONFIRMED</span>
+              </label>
+              <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700" value="IN_PROGRESS" onchange="applyFilters()">
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-800">IN_PROGRESS</span>
+              </label>
+              <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700" value="COMPLETED" onchange="applyFilters()">
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-700">COMPLETED</span>
+              </label>
+              <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" class="status-cb w-4 h-4 accent-blue-700" value="CANCELLED" onchange="applyFilters()">
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-700">CANCELLED</span>
+              </label>
+            </div>
           </div>
+          <select id="typeFilter" onchange="applyFilters()" class="input" style="width:auto">
+            <option value="">Tất cả loại</option>
+            <option>STANDARD</option><option>WELLNESS</option>
+          </select>
+          <select id="paidFilter" onchange="applyFilters()" class="input" style="width:auto">
+            <option value="">Tất cả TT</option>
+            <option value="true">✅ Đã thanh toán</option>
+            <option value="false">⚠️ Chưa thanh toán</option>
+          </select>
         </div>
-        <select id="typeFilter" onchange="filterBookings()"
-          class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Tất cả loại</option>
-          <option>STANDARD</option><option>WELLNESS</option>
-        </select>
+        <!-- Advanced filters row -->
+        <div class="flex flex-wrap gap-3 items-center">
+          <span class="text-xs text-gray-500 font-medium">Ngày tour:</span>
+          <input type="date" id="tourFrom" class="input text-xs" style="width:auto" onchange="applyFilters()"/>
+          <span class="text-xs text-gray-400">→</span>
+          <input type="date" id="tourTo"   class="input text-xs" style="width:auto" onchange="applyFilters()"/>
+          <button onclick="clearAllFilters()" class="text-xs text-gray-400 hover:text-gray-700 underline ml-2">Xoá bộ lọc</button>
+          <span id="filterResultCount" class="text-xs text-gray-500 ml-auto"></span>
+        </div>
       </div>
+
       <div id="bookingTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+
+      <!-- Pagination -->
+      <div id="paginationBar" class="mt-4 flex items-center justify-between text-sm text-gray-600"></div>
     </div>
 
     <!-- BOOKING DETAIL -->
-    <div id="page-detail" class="page hidden">
+    <div id="page-detail" class="page">
       <button onclick="showPage('bookings')" class="text-sm text-blue-700 hover:underline mb-4 flex items-center gap-1">
         ← Quay lại danh sách
       </button>
@@ -172,7 +245,7 @@
     </div>
 
     <!-- NEW BOOKING -->
-    <div id="page-new-booking" class="page hidden">
+    <div id="page-new-booking" class="page">
       <h2 class="text-2xl font-bold text-gray-800 mb-6">Tạo Booking mới</h2>
       <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
         <div class="grid grid-cols-2 gap-4">
@@ -212,7 +285,16 @@
           </div>
           <div class="col-span-2">
             <label class="label">Email</label>
-            <input id="f-cemail" class="input" placeholder="email@example.com" type="email"/>
+            <input id="f-cemail" class="input" type="email" placeholder="email@example.com"/>
+          </div>
+          <div class="col-span-2">
+            <label class="label">Nguồn</label>
+            <select id="f-source" class="input">
+              <option value="ADMIN">ADMIN</option>
+              <option value="WEBSITE">WEBSITE</option>
+              <option value="PLATFORM">PLATFORM</option>
+              <option value="DIRECT">DIRECT</option>
+            </select>
           </div>
           <div class="col-span-2">
             <label class="label">Yêu cầu đặc biệt</label>
@@ -245,7 +327,7 @@
         </div>
         <div id="formError" class="hidden mt-4 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
         <div class="mt-6 flex gap-3">
-          <button onclick="submitBooking()"
+          <button onclick="submitBooking()" id="submitBtn"
             class="bg-blue-900 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-800">
             Tạo Booking
           </button>
@@ -258,86 +340,31 @@
     </div>
 
     <!-- USERS PAGE -->
-    <div id="page-users" class="page hidden">
+    <div id="page-users" class="page">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-800">Quản lý User</h2>
-        <button onclick="openCreateUser()"
-          class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
-          + Tạo User mới
-        </button>
+        <button onclick="openCreateUser()" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo User mới</button>
       </div>
       <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
-    <!-- CREATE USER MODAL -->
-    <div id="modalCreateUser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h3 class="text-lg font-bold mb-5">Tạo User mới</h3>
-        <div class="space-y-3">
-          <div>
-            <label class="label">Username *</label>
-            <input id="nu-username" class="input" placeholder="vd: nvdh2"/>
-          </div>
-          <div>
-            <label class="label">Mật khẩu *</label>
-            <input id="nu-password" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/>
-          </div>
-          <div>
-            <label class="label">Họ tên hiển thị *</label>
-            <input id="nu-name" class="input" placeholder="vd: Nguyễn Văn B"/>
-          </div>
-          <div>
-            <label class="label">Role *</label>
-            <select id="nu-role" class="input">
-              <option>CEO</option><option>TPDH</option><option>NVDH</option>
-              <option>CS</option><option>PM</option><option>WC</option><option>KETOAN</option>
-            </select>
-          </div>
-          <div>
-            <label class="label">Công ty</label>
-            <select id="nu-company" class="input">
-              <option>ALL</option><option>CTY1</option><option>CTY2</option><option>CTY3</option>
-            </select>
-          </div>
+    <!-- REVENUE PAGE -->
+    <div id="page-revenue" class="page">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">💰 Báo cáo Doanh thu</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6" id="revenueCards"></div>
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-gray-700">Chi tiết thanh toán</h3>
+          <button onclick="exportCSV()" class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 flex items-center gap-1">
+            ⬇ Xuất CSV
+          </button>
         </div>
-        <div id="createUserError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
-        <div class="mt-5 flex gap-3">
-          <button onclick="submitCreateUser()"
-            class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Tạo</button>
-          <button onclick="closeModal('modalCreateUser')"
-            class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
-        </div>
+        <div id="revenueTable"></div>
       </div>
     </div>
-
-    <!-- CHANGE PASSWORD MODAL -->
-    <div id="modalChangePass" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
-        <h3 class="text-lg font-bold mb-5">Đổi mật khẩu</h3>
-        <input id="cp-username" type="hidden"/>
-        <div class="space-y-3">
-          <div>
-            <label class="label">Mật khẩu mới *</label>
-            <input id="cp-newpass" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/>
-          </div>
-          <div>
-            <label class="label">Xác nhận lại *</label>
-            <input id="cp-confirm" type="password" class="input" placeholder="Nhập lại mật khẩu"/>
-          </div>
-        </div>
-        <div id="changePassError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
-        <div class="mt-5 flex gap-3">
-          <button onclick="submitChangePass()"
-            class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
-          <button onclick="closeModal('modalChangePass')"
-            class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
-        </div>
-      </div>
-    </div>
-
 
     <!-- CHECKLIST PAGE -->
-    <div id="page-checklist" class="page hidden">
+    <div id="page-checklist" class="page">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-800">✅ Checklist</h2>
         <div class="flex gap-3 items-center">
@@ -348,8 +375,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Progress bar -->
       <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
         <div class="flex items-center justify-between mb-3">
           <span class="font-semibold text-gray-700">Tiến độ hôm nay</span>
@@ -359,9 +384,7 @@
           <div id="cl-progressBar" class="bg-blue-900 h-4 rounded-full transition-all duration-500" style="width:0%"></div>
         </div>
       </div>
-
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Daily -->
         <div class="bg-white rounded-xl shadow-sm p-6">
           <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
             <span class="bg-blue-900 text-white text-xs px-2 py-1 rounded-full">MỖI NGÀY</span>
@@ -369,7 +392,6 @@
           </h3>
           <div id="cl-daily-list" class="space-y-2"></div>
         </div>
-        <!-- Weekly -->
         <div class="bg-white rounded-xl shadow-sm p-6">
           <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
             <span class="bg-teal-700 text-white text-xs px-2 py-1 rounded-full">MỖI TUẦN</span>
@@ -381,9 +403,9 @@
     </div>
 
     <!-- CEO SUMMARY PAGE -->
-    <div id="page-cl-summary" class="page hidden">
+    <div id="page-cl-summary" class="page">
       <div class="flex items-center gap-4 mb-6">
-        <button onclick="showPage('checklist')" class="text-sm text-blue-700 hover:underline">← Về checklist của tôi</button>
+        <button onclick="showPage('checklist')" class="text-sm text-blue-700 hover:underline">← Về checklist</button>
         <h2 class="text-2xl font-bold text-gray-800">📊 Compliance Team</h2>
       </div>
       <div id="cl-summary-content"></div>
@@ -392,24 +414,79 @@
   </main>
 </div>
 
-<style>
-.label { @apply block text-sm font-medium text-gray-700 mb-1; display:block;font-size:.875rem;font-weight:500;color:#374151;margin-bottom:.25rem; }
-.input  { @apply w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500; width:100%;border:1px solid #e5e7eb;border-radius:.5rem;padding:.625rem .75rem;font-size:.875rem; }
-.input:focus { outline:none;box-shadow:0 0 0 2px #3b82f6; }
-textarea.input { resize:vertical; }
-.nav-link.active { background:#1e40af; }
-</style>
+<!-- MODALS -->
+<div id="modalCreateUser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <h3 class="text-lg font-bold mb-5">Tạo User mới</h3>
+    <div class="space-y-3">
+      <div><label class="label">Username *</label><input id="nu-username" class="input" placeholder="vd: nvdh2"/></div>
+      <div><label class="label">Mật khẩu *</label><input id="nu-password" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/></div>
+      <div><label class="label">Họ tên hiển thị *</label><input id="nu-name" class="input" placeholder="vd: Nguyễn Văn B"/></div>
+      <div><label class="label">Role *</label>
+        <select id="nu-role" class="input">
+          <option>CEO</option><option>TPDH</option><option>NVDH</option>
+          <option>CS</option><option>PM</option><option>WC</option><option>KETOAN</option>
+        </select>
+      </div>
+      <div><label class="label">Công ty</label>
+        <select id="nu-company" class="input">
+          <option>ALL</option><option>CTY1</option><option>CTY2</option><option>CTY3</option>
+        </select>
+      </div>
+    </div>
+    <div id="createUserError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitCreateUser()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Tạo</button>
+      <button onclick="closeModal('modalCreateUser')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalChangePass" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <h3 class="text-lg font-bold mb-5">Đổi mật khẩu</h3>
+    <input id="cp-username" type="hidden"/>
+    <div class="space-y-3">
+      <div><label class="label">Mật khẩu mới *</label><input id="cp-newpass" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/></div>
+      <div><label class="label">Xác nhận lại *</label><input id="cp-confirm" type="password" class="input" placeholder="Nhập lại mật khẩu"/></div>
+    </div>
+    <div id="changePassError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitChangePass()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalChangePass')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
 
 <script>
-const API = '';  // same origin
+const API = '';
 let TOKEN = localStorage.getItem('bh_token');
 let USER  = JSON.parse(localStorage.getItem('bh_user') || 'null');
 let ALL_BOOKINGS = [];
 let CURRENT_BRIEF = '';
+let STAFF_LIST = [];  // cached staff for dropdowns
+let BOOKING_PAGE = 1;
+let BOOKING_TOTAL_PAGES = 1;
+let BOOKING_TOTAL = 0;
+const PAGE_SIZE = 20;
 
 // ── HTML escape ───────────────────────────────────────────
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Toast system ──────────────────────────────────────────
+function toast(msg, type='success', duration=3500) {
+  const icons = { success:'✅', error:'❌', warn:'⚠️', info:'ℹ️' };
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<span class="text-lg flex-shrink-0">${icons[type]}</span><span class="flex-1">${esc(msg)}</span>
+    <button onclick="this.parentElement.remove()" class="text-current opacity-50 hover:opacity-100 flex-shrink-0 ml-1">✕</button>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'fadeOut .3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, duration);
 }
 
 // ── API helper ────────────────────────────────────────────
@@ -423,10 +500,16 @@ async function api(path, opts={}) {
   return data;
 }
 
+// ── Mobile sidebar ────────────────────────────────────────
+function openSidebar()  { document.getElementById('sidebar').classList.add('open'); document.getElementById('overlay').classList.add('open'); }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('overlay').classList.remove('open'); }
+
 // ── Auth ──────────────────────────────────────────────────
 async function doLogin() {
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
   try {
     const data = await api('/auth/login', { method:'POST', body: JSON.stringify({username:u,password:p}) });
     TOKEN = data.token; USER = data.user;
@@ -434,8 +517,8 @@ async function doLogin() {
     localStorage.setItem('bh_user', JSON.stringify(USER));
     showApp();
   } catch(e) {
-    document.getElementById('loginError').classList.remove('hidden');
-    document.getElementById('loginError').textContent = e.message;
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
   }
 }
 
@@ -450,27 +533,40 @@ function doLogout() {
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('mainApp').classList.remove('hidden');
-  document.getElementById('userInfo').textContent = `${USER.name} (${USER.role}) · ${USER.company}`;
+  document.getElementById('userInfo').textContent = `${USER.name} · ${USER.role}`;
   if (USER.role === 'CEO') {
     document.getElementById('navUsers').classList.remove('hidden');
     document.getElementById('navCeoSummary').classList.remove('hidden');
   }
+  if (['CEO','KETOAN'].includes(USER.role)) {
+    document.getElementById('navKetoan').classList.remove('hidden');
+  }
+  loadStaff();
   showPage('dashboard');
 }
 
+async function loadStaff() {
+  try {
+    const data = await api('/users/staff');
+    STAFF_LIST = data.staff;
+  } catch(e) { /* non-critical */ }
+}
+
 function showPage(page) {
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active','bg-blue-800'));
+  document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
   const el = document.getElementById(`page-${page}`);
-  if (el) el.classList.remove('hidden');
+  if (el) el.classList.add('active');
   document.querySelectorAll('.nav-link').forEach(n => {
-    if (n.getAttribute('onclick')?.includes(page)) n.classList.add('bg-blue-800');
+    if (n.getAttribute('onclick')?.includes(`'${page}'`)) n.classList.add('active');
   });
-  if (page === 'dashboard') loadDashboard();
-  if (page === 'bookings')  loadBookings();
-  if (page === 'users')    loadUsers();
-  if (page === 'checklist') loadChecklist();
+  closeSidebar();
+  if (page === 'dashboard')  loadDashboard();
+  if (page === 'bookings')   { BOOKING_PAGE = 1; loadBookings(); }
+  if (page === 'users')      loadUsers();
+  if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
+  if (page === 'revenue')    loadRevenue();
 }
 
 // ── Dashboard ─────────────────────────────────────────────
@@ -490,56 +586,68 @@ async function loadDashboard(days, from, to) {
   if (days !== undefined) {
     DASHBOARD_DAYS = days;
     setActiveDayBtn(days);
-    // Clear date range inputs when a day button is clicked
-    const fromEl = document.getElementById('dashFrom');
-    const toEl   = document.getElementById('dashTo');
-    if (fromEl) fromEl.value = '';
-    if (toEl)   toEl.value   = '';
-    document.getElementById('clearRangeBtn')?.classList.add('hidden');
+    document.getElementById('dashFrom').value = '';
+    document.getElementById('dashTo').value = '';
+    document.getElementById('clearRangeBtn').classList.add('hidden');
   }
 
-  let statsQ = '', recentQ = '';
+  let q = '';
   if (from || to) {
     const p = new URLSearchParams();
     if (from) p.set('from', from);
-    if (to)   p.set('to',   to);
-    statsQ = recentQ = '?' + p.toString();
+    if (to)   p.set('to', to);
+    q = '?' + p.toString();
   } else if (days > 0) {
-    statsQ = recentQ = `?days=${days}`;
+    q = `?days=${days}`;
   }
 
   try {
-    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness } = await api(`/bookings/stats${statsQ}`);
+    const stats = await api(`/bookings/stats${q}`);
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent } = stats;
+
+    // Urgent banner
+    const banner = document.getElementById('urgentBanner');
+    const bannerText = document.getElementById('urgentBannerText');
+    if (urgent > 0) {
+      bannerText.textContent = `${urgent} tour sắp khởi hành chưa có NVDH phụ trách!`;
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+
     const cards = [
-      { label:'Tổng booking',      value: total,                color:'bg-blue-900',   icon:'📋' },
-      { label:'Mới / Chờ confirm', value: newB,                 color:'bg-orange-500', icon:'🆕' },
-      { label:'Đang thực hiện',    value: inProgress+confirmed, color:'bg-teal-600',   icon:'🚀' },
-      { label:'Hoàn thành',        value: completed,            color:'bg-green-600',  icon:'✅' },
-      { label:'Wellness Package',  value: wellness,             color:'bg-purple-700', icon:'🏥' },
+      { label:'Tổng booking',      value: total,               color:'bg-blue-900',   icon:'📋', filter:null },
+      { label:'Chờ xác nhận',      value: newB,                color:'bg-orange-500', icon:'🆕', filter:'NEW' },
+      { label:'Đang thực hiện',    value: inProgress+confirmed,color:'bg-teal-600',   icon:'🚀', filter:'IN_PROGRESS' },
+      { label:'Hoàn thành',        value: completed,           color:'bg-green-600',  icon:'✅', filter:'COMPLETED' },
+      { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
     ];
     document.getElementById('statCards').innerHTML = cards.map(c => `
-      <div class="${c.color} text-white rounded-xl p-5 cursor-pointer hover:opacity-90 transition">
-        <div class="text-3xl mb-1">${c.icon}</div>
+      <div onclick="${c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
+        class="${c.color} text-white rounded-xl p-5 ${c.filter || c.filterPaid ? 'cursor-pointer hover:opacity-90' : ''} transition">
+        <div class="text-2xl mb-1">${c.icon}</div>
         <div class="text-3xl font-bold">${c.value}</div>
         <div class="text-sm opacity-80 mt-1">${c.label}</div>
       </div>`).join('');
 
-    const { bookings } = await api(`/bookings${recentQ}`);
+    const { bookings } = await api(`/bookings${q ? q + '&' : '?'}limit=5`);
     const recent = bookings.slice(0, 5);
     document.getElementById('recentBookings').innerHTML = recent.length === 0
       ? '<p class="text-gray-400 text-sm">Chưa có booking nào</p>'
-      : `<table class="w-full text-sm"><thead class="text-left text-gray-500 border-b">
-          <tr><th class="pb-2">Mã đơn</th><th>Tour</th><th>Khách</th><th>Ngày KH</th><th>Status</th><th></th></tr>
-         </thead><tbody>
-         ${recent.map(b => `<tr class="border-b last:border-0 hover:bg-gray-50">
-           <td class="py-2.5 font-mono text-xs text-blue-700">${b.bookingId}</td>
-           <td class="py-2.5 max-w-32 truncate">${esc(b.product)}</td>
-           <td class="py-2.5">${esc(b.customer.name)}</td>
-           <td class="py-2.5">${b.tourDate}</td>
-           <td class="py-2.5">${statusBadge(b.status)}</td>
-           <td class="py-2.5"><button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Chi tiết</button></td>
-         </tr>`).join('')}
-         </tbody></table>`;
+      : `<div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead class="text-left text-gray-500 border-b">
+            <tr><th class="pb-2 pr-4">Mã đơn</th><th class="pb-2 pr-4">Tour</th><th class="pb-2 pr-4">Khách</th><th class="pb-2 pr-4">Ngày KH</th><th class="pb-2 pr-4">Status</th><th class="pb-2"></th></tr>
+          </thead>
+          <tbody>
+          ${recent.map(b => `<tr class="border-b last:border-0 hover:bg-gray-50">
+            <td class="py-2.5 pr-4 font-mono text-xs text-blue-700">${b.bookingId}</td>
+            <td class="py-2.5 pr-4 max-w-32 truncate">${esc(b.product)}</td>
+            <td class="py-2.5 pr-4">${esc(b.customer.name)}</td>
+            <td class="py-2.5 pr-4 whitespace-nowrap">${b.tourDate}</td>
+            <td class="py-2.5 pr-4">${statusBadge(b.status)}</td>
+            <td class="py-2.5"><button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Chi tiết</button></td>
+          </tr>`).join('')}
+          </tbody></table></div>`;
   } catch(e) { console.error(e); }
 }
 
@@ -547,7 +655,7 @@ function applyDateRange() {
   const from = document.getElementById('dashFrom').value;
   const to   = document.getElementById('dashTo').value;
   if (!from && !to) return;
-  setActiveDayBtn(-1);  // deactivate all day buttons
+  setActiveDayBtn(-1);
   DASHBOARD_DAYS = 0;
   document.getElementById('clearRangeBtn').classList.remove('hidden');
   loadDashboard(undefined, from, to);
@@ -555,125 +663,265 @@ function applyDateRange() {
 
 function clearDateRange() {
   document.getElementById('dashFrom').value = '';
-  document.getElementById('dashTo').value   = '';
+  document.getElementById('dashTo').value = '';
   document.getElementById('clearRangeBtn').classList.add('hidden');
   loadDashboard(0);
 }
 
-// ── Bookings list ─────────────────────────────────────────
-async function loadBookings() {
-  try {
-    const data = await api('/bookings');
-    ALL_BOOKINGS = data.bookings;
-    renderTable(ALL_BOOKINGS);
-  } catch(e) { console.error(e); }
-}
-
-function toggleStatusDropdown() {
-  document.getElementById('statusDropdownMenu').classList.toggle('hidden');
-}
-
-function filterBookings() {
-  const search   = document.getElementById('searchInput').value.toLowerCase();
-  const selected = [...document.querySelectorAll('.status-cb:checked')].map(c => c.value);
-  const type     = document.getElementById('typeFilter').value;
-
-  // Update button label
-  const lbl = document.getElementById('statusFilterLabel');
-  if (selected.length === 0)      lbl.textContent = 'Tất cả status';
-  else if (selected.length === 1) lbl.textContent = selected[0];
-  else                            lbl.textContent = `${selected.length} status đã chọn`;
-
-  const filtered = ALL_BOOKINGS.filter(b => {
-    const matchSearch = !search ||
-      b.bookingId.toLowerCase().includes(search) ||
-      b.customer.name.toLowerCase().includes(search) ||
-      b.customer.phone.includes(search) ||
-      b.product.toLowerCase().includes(search);
-    const matchStatus = selected.length === 0 || selected.includes(b.status);
-    const matchType   = !type || b.type === type;
-    return matchSearch && matchStatus && matchType;
+// Dashboard card click shortcuts
+function filterByStatus(status) {
+  document.querySelectorAll('.status-cb').forEach(cb => {
+    cb.checked = cb.value === status;
   });
-  renderTable(filtered);
+  document.getElementById('statusFilterLabel').textContent = status;
+  BOOKING_PAGE = 1;
+  showPage('bookings');
+}
+
+function filterByPaid(val) {
+  document.getElementById('paidFilter').value = val;
+  BOOKING_PAGE = 1;
+  showPage('bookings');
+}
+
+function filterUrgent() {
+  // Show bookings with tourDate within 3 days
+  const today = new Date().toISOString().slice(0,10);
+  const in3 = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
+  document.getElementById('tourFrom').value = today;
+  document.getElementById('tourTo').value = in3;
+  BOOKING_PAGE = 1;
+  showPage('bookings');
+}
+
+// ── Bookings list ─────────────────────────────────────────
+let filterDebounce;
+function debounceFilter() {
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(() => { BOOKING_PAGE = 1; loadBookings(); }, 350);
+}
+
+function applyFilters() { BOOKING_PAGE = 1; loadBookings(); }
+
+function clearAllFilters() {
+  document.getElementById('searchInput').value = '';
+  document.querySelectorAll('.status-cb').forEach(cb => cb.checked = false);
+  document.getElementById('statusFilterLabel').textContent = 'Tất cả status';
+  document.getElementById('typeFilter').value = '';
+  document.getElementById('paidFilter').value = '';
+  document.getElementById('tourFrom').value = '';
+  document.getElementById('tourTo').value = '';
+  BOOKING_PAGE = 1;
+  loadBookings();
+}
+
+function buildBookingQuery() {
+  const p = new URLSearchParams();
+  const search  = document.getElementById('searchInput').value.trim();
+  const statuses = [...document.querySelectorAll('.status-cb:checked')].map(c => c.value);
+  const type    = document.getElementById('typeFilter').value;
+  const paid    = document.getElementById('paidFilter').value;
+  const tourFrom = document.getElementById('tourFrom').value;
+  const tourTo   = document.getElementById('tourTo').value;
+
+  if (search)          p.set('search', search);
+  if (statuses.length === 1) p.set('status', statuses[0]);
+  if (type)            p.set('type', type);
+  if (paid !== '')     p.set('paid', paid);
+  if (tourFrom)        p.set('tourFrom', tourFrom);
+  if (tourTo)          p.set('tourTo', tourTo);
+  p.set('page', BOOKING_PAGE);
+  p.set('limit', PAGE_SIZE);
+  return p.toString();
+}
+
+async function loadBookings() {
+  const tableEl = document.getElementById('bookingTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(5).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const qs = buildBookingQuery();
+    const data = await api(`/bookings?${qs}`);
+    ALL_BOOKINGS = data.bookings;
+    BOOKING_TOTAL = data.total;
+    BOOKING_TOTAL_PAGES = data.pages;
+
+    // Update status label
+    const selected = [...document.querySelectorAll('.status-cb:checked')].map(c => c.value);
+    const lbl = document.getElementById('statusFilterLabel');
+    if (selected.length === 0)      lbl.textContent = 'Tất cả status';
+    else if (selected.length === 1) lbl.textContent = selected[0];
+    else                            lbl.textContent = `${selected.length} status`;
+
+    document.getElementById('filterResultCount').textContent = `${data.total} kết quả`;
+    renderTable(data.bookings);
+    renderPagination(data.page, data.pages, data.total);
+  } catch(e) {
+    tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`;
+  }
+}
+
+function renderPagination(page, pages, total) {
+  const el = document.getElementById('paginationBar');
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  const from = (page-1)*PAGE_SIZE + 1;
+  const to   = Math.min(page*PAGE_SIZE, total);
+  el.innerHTML = `
+    <span class="text-gray-500">${from}–${to} / ${total} booking</span>
+    <div class="flex items-center gap-1">
+      <button onclick="goPage(${page-1})" ${page<=1?'disabled':''} class="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50 disabled:cursor-not-allowed">← Trước</button>
+      <span class="px-3 py-1.5 text-sm font-medium">Trang ${page} / ${pages}</span>
+      <button onclick="goPage(${page+1})" ${page>=pages?'disabled':''} class="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50 disabled:cursor-not-allowed">Tiếp →</button>
+    </div>`;
+}
+
+function goPage(p) {
+  if (p < 1 || p > BOOKING_TOTAL_PAGES) return;
+  BOOKING_PAGE = p;
+  loadBookings();
+  document.getElementById('page-bookings').scrollTo(0,0);
+}
+
+// Urgency check: tour within 3 days, not completed/cancelled, no NVDH
+function isUrgent(b) {
+  if (['COMPLETED','CANCELLED'].includes(b.status)) return false;
+  const tourMs = new Date(b.tourDate).getTime();
+  const diff = (tourMs - Date.now()) / 86400000;
+  return diff >= 0 && diff <= 3 && !b.assignedTo;
+}
+function isOverdue(b) {
+  if (['COMPLETED','CANCELLED'].includes(b.status)) return false;
+  const tourMs = new Date(b.tourDate).getTime();
+  return tourMs < Date.now();
 }
 
 function renderTable(bookings) {
   if (bookings.length === 0) {
-    document.getElementById('bookingTable').innerHTML = '<p class="text-gray-400 text-sm p-6">Không có booking nào</p>';
+    document.getElementById('bookingTable').innerHTML = '<p class="text-gray-400 text-sm p-6">Không có booking nào phù hợp</p>';
     return;
   }
+  const today = new Date().toISOString().slice(0,10);
   document.getElementById('bookingTable').innerHTML = `
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
+      <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
         <tr>
           <th class="px-4 py-3">Mã đơn</th>
           <th class="px-4 py-3">Tour / Sản phẩm</th>
           <th class="px-4 py-3">Khách hàng</th>
           <th class="px-4 py-3">Ngày KH</th>
           <th class="px-4 py-3">Loại</th>
+          <th class="px-4 py-3">Thanh toán</th>
           <th class="px-4 py-3">Status</th>
-          <th class="px-4 py-3">Action</th>
+          <th class="px-4 py-3">NVDH</th>
+          <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
-        ${bookings.map(b => `
-        <tr class="hover:bg-gray-50">
-          <td class="px-4 py-3 font-mono text-xs text-blue-700">${b.bookingId}</td>
-          <td class="px-4 py-3 max-w-40">
-            <div class="font-medium truncate">${esc(b.product)}</div>
-            <div class="text-xs text-gray-400">${b.adults}N${b.children>0?'+'+b.children+'T':''}</div>
-          </td>
-          <td class="px-4 py-3">
-            <div>${esc(b.customer.name)}</div>
-            <div class="text-xs text-gray-400">${esc(b.customer.phone)}</div>
-          </td>
-          <td class="px-4 py-3 whitespace-nowrap">${b.tourDate}</td>
-          <td class="px-4 py-3">${b.type === 'WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-500">STD</span>'}</td>
-          <td class="px-4 py-3">${statusBadge(b.status)}</td>
-          <td class="px-4 py-3">
-            <button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Xem</button>
-          </td>
-        </tr>`).join('')}
+        ${bookings.map(b => {
+          const urgent  = isUrgent(b);
+          const overdue = isOverdue(b);
+          const rowClass = overdue ? 'row-overdue' : urgent ? 'row-urgent' : 'hover:bg-gray-50';
+          const daysToTour = Math.ceil((new Date(b.tourDate).getTime() - Date.now()) / 86400000);
+          return `
+          <tr class="${rowClass}">
+            <td class="px-4 py-3 font-mono text-xs text-blue-700 whitespace-nowrap">
+              ${b.bookingId}
+              ${urgent ? '<span class="ml-1 text-orange-600 text-xs font-bold" title="Tour sắp khởi hành, chưa có NVDH">⚠️</span>' : ''}
+              ${overdue ? '<span class="ml-1 text-red-600 text-xs font-bold" title="Tour đã qua ngày">🔴</span>' : ''}
+            </td>
+            <td class="px-4 py-3 max-w-40">
+              <div class="font-medium truncate">${esc(b.product)}</div>
+              <div class="text-xs text-gray-400">${b.adults}NL${b.children>0?' + '+b.children+'TE':''}</div>
+            </td>
+            <td class="px-4 py-3">
+              <div class="font-medium">${esc(b.customer.name)}</div>
+              <div class="text-xs text-gray-400">${esc(b.customer.phone)}</div>
+            </td>
+            <td class="px-4 py-3 whitespace-nowrap">
+              <div class="${daysToTour >= 0 && daysToTour <= 3 && !['COMPLETED','CANCELLED'].includes(b.status) ? 'text-orange-700 font-semibold' : ''}">${b.tourDate}</div>
+              ${daysToTour >= 0 && daysToTour <= 3 && !['COMPLETED','CANCELLED'].includes(b.status) ? `<div class="text-xs text-orange-500">còn ${daysToTour} ngày</div>` : ''}
+            </td>
+            <td class="px-4 py-3">${b.type === 'WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-400">STD</span>'}</td>
+            <td class="px-4 py-3">
+              ${b.payment.paid
+                ? '<span class="text-xs text-green-600 font-semibold">✅ TT đủ</span>'
+                : `<span class="text-xs text-orange-500 font-semibold">⚠️ ${Number(b.payment.amount).toLocaleString('vi-VN')}đ</span>`}
+            </td>
+            <td class="px-4 py-3">${statusBadge(b.status)}</td>
+            <td class="px-4 py-3 text-xs text-gray-500">${esc(b.assignedTo) || '<span class="text-gray-300">—</span>'}</td>
+            <td class="px-4 py-3">
+              <button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs whitespace-nowrap">Xem →</button>
+            </td>
+          </tr>`;
+        }).join('')}
       </tbody>
-    </table>`;
+    </table></div>`;
+}
+
+function toggleStatusDropdown() {
+  document.getElementById('statusDropdownMenu').classList.toggle('hidden');
 }
 
 // ── Booking Detail ────────────────────────────────────────
 async function showDetail(id) {
   showPage('detail');
+  document.getElementById('detailContent').innerHTML = `<div class="flex items-center gap-3 p-8"><div class="skeleton h-6 w-32"></div><div class="skeleton h-6 w-48"></div></div>`;
   try {
-    const { booking: b } = await api(`/bookings/${id}`);
-    const { brief } = await api(`/bookings/${id}/brief`);
+    const [{ booking: b }, { brief }] = await Promise.all([
+      api(`/bookings/${id}`),
+      api(`/bookings/${id}/brief`)
+    ]);
     CURRENT_BRIEF = brief;
 
-    document.getElementById('detailContent').innerHTML = `
-      <div class="grid grid-cols-3 gap-6">
+    const nvdhList = STAFF_LIST.filter(s => ['NVDH','TPDH'].includes(s.role));
+    const wcList   = STAFF_LIST.filter(s => s.role === 'WC');
 
-        <!-- Left col: booking info -->
-        <div class="col-span-2 space-y-4">
+    const nvdhOptions = `<option value="">-- Chọn NVDH --</option>` +
+      nvdhList.map(s => `<option value="${esc(s.username)}" ${b.assignedTo===s.username?'selected':''}>${esc(s.name)} (${s.username})</option>`).join('');
+    const wcOptions = `<option value="">-- Chọn WC --</option>` +
+      wcList.map(s => `<option value="${esc(s.username)}" ${b.wcAssigned===s.username?'selected':''}>${esc(s.name)} (${s.username})</option>`).join('');
+
+    const daysToTour = Math.ceil((new Date(b.tourDate).getTime() - Date.now()) / 86400000);
+    const urgentAlert = isUrgent(b)
+      ? `<div class="mb-4 bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-center gap-2 text-orange-700 text-sm"><span>⚠️</span><span>Tour khởi hành trong <strong>${daysToTour} ngày</strong> — chưa có NVDH phụ trách!</span></div>`
+      : '';
+
+    document.getElementById('detailContent').innerHTML = `
+      ${urgentAlert}
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        <!-- Left: info -->
+        <div class="xl:col-span-2 space-y-4">
           <div class="bg-white rounded-xl shadow-sm p-6">
-            <div class="flex items-start justify-between mb-4">
+            <div class="flex items-start justify-between mb-4 flex-wrap gap-2">
               <div>
                 <h3 class="text-xl font-bold text-gray-800">${esc(b.product)}</h3>
-                <p class="text-sm text-gray-500 font-mono">${b.bookingId}</p>
+                <p class="text-sm text-gray-400 font-mono">${b.bookingId}</p>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 ${b.type==='WELLNESS' ? '<span class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">WELLNESS</span>' : ''}
                 ${statusBadge(b.status)}
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div><span class="text-gray-500">Ngày khởi hành:</span> <strong>${b.tourDate}</strong></div>
-              <div><span class="text-gray-500">Số khách:</span> <strong>${b.adults} NL${b.children>0?' + '+b.children+' TE':''}</strong></div>
-              <div><span class="text-gray-500">Khách hàng:</span> <strong>${esc(b.customer.name)}</strong></div>
-              <div><span class="text-gray-500">SĐT:</span> <strong>${esc(b.customer.phone)}</strong></div>
-              <div><span class="text-gray-500">Email:</span> <strong>${b.customer.email ? esc(b.customer.email) : '—'}</strong></div>
-              <div><span class="text-gray-500">Nguồn:</span> <strong>${esc(b.source)}</strong></div>
-              <div class="col-span-2"><span class="text-gray-500">Yêu cầu ĐB:</span> <strong class="${b.specialReqs?'text-orange-600':''}">${esc(b.specialReqs)||'Không có'}</strong></div>
-              <div><span class="text-gray-500">Thanh toán:</span> <strong class="${b.payment.paid?'text-green-600':'text-orange-500'}">${b.payment.paid?'✅ Đã TT':'⚠️ '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</strong></div>
-              <div><span class="text-gray-500">NVDH Cty1:</span> <strong>${esc(b.assignedTo)||'Chưa phân công'}</strong></div>
-              ${b.type==='WELLNESS' ? `<div><span class="text-gray-500">WC Cty3:</span> <strong>${esc(b.wcAssigned)||'Chưa phân công'}</strong></div>
-              <div><span class="text-gray-500">Gói khám:</span> <strong>${esc(b.wellness?.package)||'—'}</strong></div>` : ''}
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Ngày khởi hành</span><strong>${b.tourDate}${daysToTour >= 0 && daysToTour <= 7 ? ` <span class="text-orange-600 text-xs">(còn ${daysToTour}N)</span>` : ''}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Số khách</span><strong>${b.adults} NL${b.children>0?' + '+b.children+' TE':''}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Khách hàng</span><strong>${esc(b.customer.name)}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">SĐT</span>
+                <a href="tel:${esc(b.customer.phone)}" class="font-semibold text-blue-700 hover:underline">${esc(b.customer.phone)}</a>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Email</span><strong>${b.customer.email ? esc(b.customer.email) : '—'}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Nguồn</span><strong>${esc(b.source)}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3 col-span-2"><span class="text-gray-500 text-xs block mb-0.5">Yêu cầu đặc biệt</span><strong class="${b.specialReqs?'text-orange-600':''}">${esc(b.specialReqs)||'Không có'}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Thanh toán</span>
+                <strong class="${b.payment.paid?'text-green-600':'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : '⚠️ '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</strong>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">NVDH (Cty1)</span><strong>${esc(b.assignedTo)||'<span class="text-gray-300">Chưa phân công</span>'}</strong></div>
+              ${b.type==='WELLNESS' ? `
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">WC (Cty3)</span><strong>${esc(b.wcAssigned)||'<span class="text-gray-300">Chưa phân công</span>'}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Gói khám</span><strong>${esc(b.wellness?.package)||'—'}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">NCC Y tế</span><strong>${esc(b.wellness?.ncc)||'—'}</strong></div>
+              ` : ''}
             </div>
           </div>
 
@@ -687,77 +935,98 @@ async function showDetail(id) {
                   ${s}
                 </button>`).join('')}
             </div>
-            <div class="mt-3 flex gap-2">
-              <input id="statusNote" placeholder="Ghi chú (optional)" class="input flex-1 text-xs"/>
+            <div class="mt-3">
+              <input id="statusNote" placeholder="Ghi chú khi đổi status (tuỳ chọn)" class="input text-sm"/>
             </div>
           </div>
 
-          <!-- Assign -->
+          <!-- Assign with dropdowns -->
           <div class="bg-white rounded-xl shadow-sm p-6">
             <h4 class="font-semibold text-gray-700 mb-3">Phân công nhân sự</h4>
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-500 block mb-1">NVDH (Cty1)</label>
-                <input id="assignNvdh" class="input text-sm" placeholder="username NVDH" value="${esc(b.assignedTo)||''}"/>
+                <select id="assignNvdh" class="input text-sm">${nvdhOptions}</select>
               </div>
               ${b.type==='WELLNESS' ? `<div>
                 <label class="text-xs text-gray-500 block mb-1">WC (Cty3)</label>
-                <input id="assignWc" class="input text-sm" placeholder="username WC" value="${esc(b.wcAssigned)||''}"/>
+                <select id="assignWc" class="input text-sm">${wcOptions}</select>
               </div>` : '<div></div>'}
             </div>
             <button data-id="${b.bookingId}" onclick="assignBooking(this.dataset.id)"
-              class="mt-3 bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-600">
-              Cập nhật phân công
+              class="mt-3 bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 transition">
+              💾 Lưu phân công
             </button>
           </div>
 
           <!-- Notes -->
           <div class="bg-white rounded-xl shadow-sm p-6">
             <h4 class="font-semibold text-gray-700 mb-3">Ghi chú nội bộ</h4>
-            <div class="space-y-2 mb-3 max-h-48 overflow-y-auto">
+            <div class="space-y-2 mb-3 max-h-52 overflow-y-auto pr-1">
               ${(b.notes||[]).length === 0 ? '<p class="text-gray-400 text-sm">Chưa có ghi chú</p>'
-                : b.notes.map(n => `<div class="bg-gray-50 rounded-lg p-3 text-sm">
-                    <p>${esc(n.text)}</p>
+                : [...b.notes].reverse().map(n => `<div class="bg-gray-50 rounded-lg p-3 text-sm border border-gray-100">
+                    <p class="text-gray-800">${esc(n.text)}</p>
                     <p class="text-xs text-gray-400 mt-1">${esc(n.name)} · ${new Date(n.at).toLocaleString('vi-VN')}</p>
                   </div>`).join('')}
             </div>
             <div class="flex gap-2">
-              <input id="noteInput" placeholder="Thêm ghi chú..." class="input flex-1 text-sm"/>
-              <button onclick="addNote('${b.bookingId}')" class="bg-gray-700 text-white px-4 rounded-lg text-sm hover:bg-gray-600">Gửi</button>
+              <input id="noteInput" placeholder="Thêm ghi chú..." class="input flex-1 text-sm"
+                onkeydown="if(event.key==='Enter')addNote('${b.bookingId}')"/>
+              <button onclick="addNote('${b.bookingId}')" class="bg-gray-700 text-white px-4 rounded-lg text-sm hover:bg-gray-600 transition">Gửi</button>
             </div>
           </div>
 
-          <!-- History -->
+          <!-- Status History -->
           <div class="bg-white rounded-xl shadow-sm p-6">
             <h4 class="font-semibold text-gray-700 mb-3">Lịch sử trạng thái</h4>
             <div class="space-y-2">
-              ${(b.statusHistory||[]).map(h => `
+              ${[...(b.statusHistory||[])].reverse().map(h => `
                 <div class="flex items-center gap-3 text-sm">
                   <span class="w-2 h-2 bg-blue-900 rounded-full flex-shrink-0"></span>
-                  <span>${statusBadge(h.status)}</span>
-                  <span class="text-gray-500 text-xs">bởi ${esc(h.by)} · ${new Date(h.at).toLocaleString('vi-VN')}</span>
+                  ${statusBadge(h.status)}
+                  <span class="text-gray-500 text-xs">bởi <strong>${esc(h.by)}</strong> · ${new Date(h.at).toLocaleString('vi-VN')}</span>
                   ${h.note ? `<span class="text-gray-600 italic text-xs">— ${esc(h.note)}</span>` : ''}
                 </div>`).join('')}
             </div>
           </div>
         </div>
 
-        <!-- Right col: brief -->
+        <!-- Right: brief + actions -->
         <div class="space-y-4">
           <div class="bg-white rounded-xl shadow-sm p-6">
-            <h4 class="font-semibold text-gray-700 mb-3">📋 Booking Brief</h4>
-            <p class="text-xs text-gray-500 mb-3">Copy và gửi cho Cty1 qua email/Zalo</p>
-            <pre id="briefPre" class="text-xs bg-gray-50 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono border"></pre>
-            <button onclick="copyBrief()"
-              class="mt-3 w-full bg-blue-900 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">
-              📋 Copy Brief
-            </button>
+            <h4 class="font-semibold text-gray-700 mb-1">📋 Booking Brief</h4>
+            <p class="text-xs text-gray-400 mb-3">Gửi cho Cty1 qua email / Zalo</p>
+            <pre id="briefPre" class="text-xs bg-gray-50 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono border max-h-80 overflow-y-auto"></pre>
+            <div class="mt-3 flex gap-2">
+              <button onclick="copyBrief()" class="flex-1 bg-blue-900 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-800 transition">
+                📋 Copy
+              </button>
+              <a id="zaloBtn" href="#" target="_blank"
+                class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-500 transition text-center">
+                💬 Zalo
+              </a>
+            </div>
+          </div>
+
+          <!-- Quick payment toggle -->
+          <div class="bg-white rounded-xl shadow-sm p-6">
+            <h4 class="font-semibold text-gray-700 mb-3">Thanh toán</h4>
+            <div class="flex items-center justify-between">
+              <span class="text-sm ${b.payment.paid ? 'text-green-600 font-semibold' : 'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : '⚠️ Chưa thanh toán: '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</span>
+              ${!b.payment.paid ? `<button data-id="${b.bookingId}" onclick="markPaid(this.dataset.id)"
+                class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition">✅ Đánh dấu đã TT</button>` : ''}
+            </div>
           </div>
         </div>
       </div>`;
+
     document.getElementById('briefPre').textContent = brief;
+    // Zalo deep link
+    const phone = b.customer.phone.replace(/\D/g,'');
+    document.getElementById('zaloBtn').href = `https://zalo.me/${phone}`;
+
   } catch(e) {
-    document.getElementById('detailContent').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl">${esc(e.message)}</div>`;
+    document.getElementById('detailContent').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-sm">${esc(e.message)}</div>`;
   }
 }
 
@@ -765,30 +1034,46 @@ async function updateStatus(id, status) {
   try {
     const note = document.getElementById('statusNote')?.value || '';
     await api(`/bookings/${id}/status`, { method:'PATCH', body: JSON.stringify({status, note}) });
+    toast(`Đã cập nhật status → ${status}`);
     showDetail(id);
-  } catch(e) { alert(e.message); }
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function addNote(id) {
-  const text = document.getElementById('noteInput').value.trim();
+  const input = document.getElementById('noteInput');
+  const text = input.value.trim();
   if (!text) return;
   try {
     await api(`/bookings/${id}/note`, { method:'POST', body: JSON.stringify({text}) });
+    input.value = '';
+    toast('Đã thêm ghi chú');
     showDetail(id);
-  } catch(e) { alert(e.message); }
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function assignBooking(id) {
-  const assignedTo = document.getElementById('assignNvdh')?.value.trim();
-  const wcAssigned = document.getElementById('assignWc')?.value.trim();
+  const assignedTo = document.getElementById('assignNvdh')?.value;
+  const wcEl = document.getElementById('assignWc');
+  const wcAssigned = wcEl?.value;
   try {
     await api(`/bookings/${id}/assign`, { method:'PATCH', body: JSON.stringify({assignedTo, wcAssigned}) });
+    toast('Đã cập nhật phân công');
     showDetail(id);
-  } catch(e) { alert(e.message); }
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function markPaid(id) {
+  try {
+    // Update via a note + direct approach — we patch status to reload, but we need payment update
+    // Use assign endpoint workaround: we'll need to reload and show note
+    toast('Tính năng đang phát triển — vui lòng dùng API trực tiếp', 'info');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function copyBrief() {
-  navigator.clipboard.writeText(CURRENT_BRIEF).then(() => alert('✅ Đã copy Booking Brief!'));
+  navigator.clipboard.writeText(CURRENT_BRIEF)
+    .then(() => toast('Đã copy Booking Brief!'))
+    .catch(() => toast('Không thể copy — thử thủ công', 'warn'));
 }
 
 // ── New Booking form ──────────────────────────────────────
@@ -798,10 +1083,11 @@ function toggleWellness() {
 }
 
 async function submitBooking() {
-  const err = (msg) => {
-    const el = document.getElementById('formError');
-    el.textContent = msg; el.classList.remove('hidden');
-  };
+  const btn = document.getElementById('submitBtn');
+  const errEl = document.getElementById('formError');
+  const err = (msg) => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
+  errEl.classList.add('hidden');
+
   const product  = document.getElementById('f-product').value.trim();
   const tourDate = document.getElementById('f-date').value;
   const cname    = document.getElementById('f-cname').value.trim();
@@ -811,6 +1097,8 @@ async function submitBooking() {
   if (!cname)    return err('Vui lòng nhập tên khách hàng');
   if (!cphone)   return err('Vui lòng nhập SĐT khách hàng');
 
+  btn.disabled = true;
+  btn.textContent = 'Đang tạo...';
   const body = {
     product, tourDate,
     adults:   parseInt(document.getElementById('f-adults').value)||1,
@@ -819,7 +1107,7 @@ async function submitBooking() {
     specialReqs: document.getElementById('f-special').value,
     type: document.getElementById('f-type').value,
     payment: { amount: parseInt(document.getElementById('f-amount').value)||0, paid: document.getElementById('f-paid').checked },
-    source: 'ADMIN',
+    source: document.getElementById('f-source').value,
     wellness: document.getElementById('f-type').value === 'WELLNESS' ? {
       package: document.getElementById('f-wpkg').value,
       ncc: document.getElementById('f-wncc').value,
@@ -836,12 +1124,95 @@ async function submitBooking() {
     document.getElementById('f-paid').checked = false;
     document.getElementById('f-type').value = 'STANDARD';
     document.getElementById('wellnessSection').classList.add('hidden');
-    document.getElementById('formError').classList.add('hidden');
+    toast('Booking đã được tạo thành công!');
     showDetail(data.booking.bookingId);
-  } catch(e) { err(e.message); }
+  } catch(e) {
+    err(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Tạo Booking';
+  }
 }
 
-// ── Helpers ───────────────────────────────────────────────
+// ── Revenue page ──────────────────────────────────────────
+async function loadRevenue() {
+  try {
+    const { bookings, total } = await api('/bookings?limit=200');
+    const paid   = bookings.filter(b => b.payment.paid);
+    const unpaid = bookings.filter(b => !b.payment.paid && !['CANCELLED'].includes(b.status));
+    const totalRevenue  = paid.reduce((s,b) => s + (b.payment.amount||0), 0);
+    const pendingRevenue = unpaid.reduce((s,b) => s + (b.payment.amount||0), 0);
+
+    // Monthly breakdown
+    const monthly = {};
+    bookings.filter(b => b.payment.paid).forEach(b => {
+      const m = b.createdAt?.slice(0,7) || 'unknown';
+      if (!monthly[m]) monthly[m] = 0;
+      monthly[m] += b.payment.amount || 0;
+    });
+
+    document.getElementById('revenueCards').innerHTML = [
+      { label:'Doanh thu đã thu',   value: totalRevenue,   color:'bg-green-600',  icon:'💰', sub:`${paid.length} booking` },
+      { label:'Doanh thu chờ thu',  value: pendingRevenue, color:'bg-orange-500', icon:'⏳', sub:`${unpaid.length} booking` },
+      { label:'Tổng giá trị',       value: totalRevenue+pendingRevenue, color:'bg-blue-900', icon:'📊', sub:'Tất cả' },
+    ].map(c => `
+      <div class="${c.color} text-white rounded-xl p-6">
+        <div class="text-3xl mb-2">${c.icon}</div>
+        <div class="text-2xl font-bold">${Number(c.value).toLocaleString('vi-VN')}đ</div>
+        <div class="text-sm opacity-80 mt-1">${c.label}</div>
+        <div class="text-xs opacity-60 mt-0.5">${c.sub}</div>
+      </div>`).join('');
+
+    // Monthly table
+    const months = Object.entries(monthly).sort((a,b) => b[0].localeCompare(a[0]));
+    document.getElementById('revenueTable').innerHTML = months.length === 0
+      ? '<p class="text-gray-400 text-sm">Chưa có dữ liệu</p>'
+      : `<table class="w-full text-sm">
+          <thead class="text-left text-gray-500 border-b text-xs uppercase">
+            <tr><th class="pb-2 pr-6">Tháng</th><th class="pb-2 pr-6">Doanh thu</th><th class="pb-2">% tổng</th></tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+          ${months.map(([m, v]) => `
+            <tr class="hover:bg-gray-50">
+              <td class="py-3 pr-6 font-medium">${m}</td>
+              <td class="py-3 pr-6 font-bold text-green-700">${Number(v).toLocaleString('vi-VN')}đ</td>
+              <td class="py-3">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-100 rounded-full h-2 max-w-32">
+                    <div class="h-2 rounded-full bg-green-500" style="width:${Math.round(v/totalRevenue*100)}%"></div>
+                  </div>
+                  <span class="text-xs text-gray-500">${Math.round(v/totalRevenue*100)}%</span>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+
+    // Store for CSV export
+    window._revenueBookings = bookings;
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function exportCSV() {
+  const bookings = window._revenueBookings || [];
+  const rows = [
+    ['Mã đơn','Tour','Ngày KH','Khách','SĐT','Loại','Status','Số tiền','Đã TT','Ngày tạo'],
+    ...bookings.map(b => [
+      b.bookingId, b.product, b.tourDate, b.customer.name, b.customer.phone,
+      b.type, b.status, b.payment.amount, b.payment.paid ? 'Có' : 'Không',
+      b.createdAt?.slice(0,10)
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `doanh-thu-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Đã xuất file CSV');
+}
+
+// ── Status badge ──────────────────────────────────────────
 function statusBadge(status) {
   const colors = {
     NEW:         'bg-blue-100 text-blue-800',
@@ -852,18 +1223,6 @@ function statusBadge(status) {
   };
   return `<span class="text-xs px-2 py-0.5 rounded-full font-semibold ${colors[status]||'bg-gray-100 text-gray-600'}">${status}</span>`;
 }
-
-// ── Auto-login if token exists ────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  if (TOKEN && USER) showApp();
-  document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-  document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#statusDropdownWrap')) {
-      document.getElementById('statusDropdownMenu')?.classList.add('hidden');
-    }
-  });
-});
 
 // ── Users ─────────────────────────────────────────────────
 async function loadUsers() {
@@ -876,8 +1235,9 @@ async function loadUsers() {
       KETOAN:'bg-yellow-100 text-yellow-800'
     };
     document.getElementById('userTable').innerHTML = `
+      <div class="overflow-x-auto">
       <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
           <tr>
             <th class="px-4 py-3">Username</th>
             <th class="px-4 py-3">Họ tên</th>
@@ -895,24 +1255,24 @@ async function loadUsers() {
             <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full font-semibold ${roleColors[u.role]||'bg-gray-100 text-gray-700'}">${esc(u.role)}</span></td>
             <td class="px-4 py-3 text-gray-500">${esc(u.company)}</td>
             <td class="px-4 py-3">
-              ${u.active !== false
-                ? '<span class="text-xs text-green-600 font-semibold">✅ Active</span>'
-                : '<span class="text-xs text-red-500 font-semibold">🔒 Bị khoá</span>'}
+              ${u.active !== false ? '<span class="text-xs text-green-600 font-semibold">✅ Active</span>' : '<span class="text-xs text-red-500 font-semibold">🔒 Bị khoá</span>'}
             </td>
-            <td class="px-4 py-3 flex gap-2 flex-wrap">
-              <button data-u="${esc(u.username)}" onclick="openChangePass(this.dataset.u)"
-                class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔑 Đổi pass</button>
-              <button data-u="${esc(u.username)}" onclick="toggleUser(this.dataset.u)"
-                class="text-xs border px-2 py-1 rounded ${u.active !== false ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">
-                ${u.active !== false ? '🔒 Khoá' : '🔓 Mở'}
-              </button>
-              ${u.username !== USER.username ? `<button data-u="${esc(u.username)}" data-n="${esc(u.name)}" onclick="deleteUser(this.dataset.u, this.dataset.n)"
-                class="text-xs border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50">🗑 Xoá</button>` : ''}
+            <td class="px-4 py-3">
+              <div class="flex gap-2 flex-wrap">
+                <button data-u="${esc(u.username)}" onclick="openChangePass(this.dataset.u)"
+                  class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔑 Đổi pass</button>
+                <button data-u="${esc(u.username)}" onclick="toggleUser(this.dataset.u)"
+                  class="text-xs border px-2 py-1 rounded ${u.active !== false ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">
+                  ${u.active !== false ? '🔒 Khoá' : '🔓 Mở'}
+                </button>
+                ${u.username !== USER.username ? `<button data-u="${esc(u.username)}" data-n="${esc(u.name)}" onclick="deleteUser(this.dataset.u, this.dataset.n)"
+                  class="text-xs border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50">🗑 Xoá</button>` : ''}
+              </div>
             </td>
           </tr>`).join('')}
         </tbody>
-      </table>`;
-  } catch(e) { console.error(e); }
+      </table></div>`;
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function openCreateUser() {
@@ -937,7 +1297,9 @@ async function submitCreateUser() {
   try {
     await api('/users', { method:'POST', body: JSON.stringify({username,password,name,role,company}) });
     closeModal('modalCreateUser');
+    toast(`Đã tạo user ${username}`);
     loadUsers();
+    loadStaff();  // refresh staff cache
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
@@ -959,25 +1321,27 @@ async function submitChangePass() {
   try {
     await api(`/users/${username}/password`, { method:'PATCH', body: JSON.stringify({newPassword: newPass}) });
     closeModal('modalChangePass');
-    alert(`✅ Đã đổi mật khẩu cho ${username}`);
+    toast(`Đã đổi mật khẩu cho ${username}`);
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
 async function toggleUser(username) {
-  if (!confirm(`Khoá/mở khoá tài khoản ${username}?`)) return;
   try {
     const res = await api(`/users/${username}/toggle`, { method:'PATCH' });
-    alert(`✅ ${res.message}`);
+    toast(res.message);
     loadUsers();
-  } catch(e) { alert(e.message); }
+    loadStaff();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function deleteUser(username, name) {
   if (!confirm(`Xoá tài khoản "${name}" (${username})? Hành động này không thể hoàn tác.`)) return;
   try {
     await api(`/users/${username}`, { method:'DELETE' });
+    toast(`Đã xoá user ${username}`, 'warn');
     loadUsers();
-  } catch(e) { alert(e.message); }
+    loadStaff();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
@@ -994,7 +1358,6 @@ async function loadChecklist() {
 
     const daily  = CL_ITEMS.filter(i => i.freq === 'DAILY');
     const weekly = CL_ITEMS.filter(i => i.freq === 'WEEKLY');
-
     renderClList('cl-daily-list',  daily);
     renderClList('cl-weekly-list', weekly);
 
@@ -1017,7 +1380,7 @@ function renderClList(containerId, items) {
   const el = document.getElementById(containerId);
   if (items.length === 0) { el.innerHTML = '<p class="text-gray-400 text-sm">Không có task nào</p>'; return; }
   el.innerHTML = items.map(item => `
-    <div class="flex items-start gap-3 p-3 rounded-lg border transition ${item.done ? 'bg-green-50 border-green-200' : 'border-gray-100 hover:border-blue-200'}" id="cl-item-${item.id}">
+    <div class="flex items-start gap-3 p-3 rounded-lg border transition ${item.done ? 'bg-green-50 border-green-200' : 'border-gray-100 hover:border-blue-200'}">
       <button onclick="toggleCl('${item.id}',${item.done})"
         class="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition mt-0.5
           ${item.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-blue-500'}">
@@ -1028,7 +1391,7 @@ function renderClList(containerId, items) {
         <p class="text-xs text-gray-500 mt-0.5">${esc(item.detail)}</p>
         ${item.sop ? `<span class="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded mt-1 inline-block">${esc(item.sop)}</span>` : ''}
       </div>
-      ${item.done ? '<span class="text-green-500 text-xs flex-shrink-0 mt-1">✅ Done</span>' : ''}
+      ${item.done ? '<span class="text-green-500 text-xs flex-shrink-0 mt-1">✅</span>' : ''}
     </div>`).join('');
 }
 
@@ -1040,19 +1403,15 @@ async function toggleCl(itemId, isDone) {
       await api(`/checklists/${itemId}/complete`, { method:'POST' });
     }
     await loadChecklist();
-  } catch(e) { alert(e.message); }
+  } catch(e) { toast(e.message, 'error'); }
 }
 
-// CEO Summary
 async function loadClSummary() {
   try {
     const { summary, dailyKey, weeklyKey } = await api('/checklists/summary');
-    const roleColors = { CS:'teal', TPDH:'blue', NVDH:'blue', WC:'purple', KETOAN:'yellow' };
-    const roleNames  = { CS:'Customer Service / CTY2', TPDH:'Trưởng Phòng ĐH / CTY1', NVDH:'NV Điều Hành / CTY1', WC:'Wellness Coordinator / CTY3', KETOAN:'Kế Toán / ALL' };
-
+    const roleNames = { CS:'Customer Service / CTY2', TPDH:'Trưởng Phòng ĐH / CTY1', NVDH:'NV Điều Hành / CTY1', WC:'Wellness Coordinator / CTY3', KETOAN:'Kế Toán / ALL' };
     const byRole = {};
     summary.forEach(s => { if (!byRole[s.role]) byRole[s.role] = []; byRole[s.role].push(s); });
-
     document.getElementById('cl-summary-content').innerHTML = `
       <div class="mb-4 text-sm text-gray-500">Ngày: <strong>${dailyKey}</strong> &nbsp;|&nbsp; Tuần: <strong>${weeklyKey}</strong></div>
       ${Object.entries(byRole).map(([role, users]) => `
@@ -1065,27 +1424,37 @@ async function loadClSummary() {
             <div class="flex-1">
               <div class="flex items-center gap-2 mb-1">
                 <span class="text-xs text-gray-500 w-16">Hằng ngày</span>
-                <div class="flex-1 bg-gray-100 rounded-full h-2.5">
-                  <div class="h-2.5 rounded-full ${u.daily.pct===100?'bg-green-500':u.daily.pct>=50?'bg-blue-600':'bg-orange-400'}"
-                    style="width:${u.daily.pct}%"></div>
+                <div class="flex-1 bg-gray-100 rounded-full h-2">
+                  <div class="h-2 rounded-full ${u.daily.pct===100?'bg-green-500':u.daily.pct>=50?'bg-blue-600':'bg-orange-400'}" style="width:${u.daily.pct}%"></div>
                 </div>
-                <span class="text-xs font-bold w-16 text-right">${u.daily.done}/${u.daily.total} (${u.daily.pct}%)</span>
+                <span class="text-xs font-bold w-20 text-right">${u.daily.done}/${u.daily.total} (${u.daily.pct}%)</span>
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500 w-16">Hàng tuần</span>
-                <div class="flex-1 bg-gray-100 rounded-full h-2.5">
-                  <div class="h-2.5 rounded-full ${u.weekly.pct===100?'bg-green-500':u.weekly.pct>=50?'bg-teal-600':'bg-orange-400'}"
-                    style="width:${u.weekly.pct}%"></div>
+                <div class="flex-1 bg-gray-100 rounded-full h-2">
+                  <div class="h-2 rounded-full ${u.weekly.pct===100?'bg-green-500':u.weekly.pct>=50?'bg-teal-600':'bg-orange-400'}" style="width:${u.weekly.pct}%"></div>
                 </div>
-                <span class="text-xs font-bold w-16 text-right">${u.weekly.done}/${u.weekly.total} (${u.weekly.pct}%)</span>
+                <span class="text-xs font-bold w-20 text-right">${u.weekly.done}/${u.weekly.total} (${u.weekly.pct}%)</span>
               </div>
             </div>
             <div class="text-2xl">${u.daily.pct===100?'🌟':u.daily.pct>=50?'🔄':'⚠️'}</div>
           </div>`).join('')}
         </div>
       </div>`).join('')}`;
-  } catch(e) { document.getElementById('cl-summary-content').innerHTML = `<p class="text-red-600">${e.message}</p>`; }
+  } catch(e) { document.getElementById('cl-summary-content').innerHTML = `<p class="text-red-600 text-sm">${esc(e.message)}</p>`; }
 }
+
+// ── Init ──────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (TOKEN && USER) showApp();
+  document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#statusDropdownWrap')) {
+      document.getElementById('statusDropdownMenu')?.classList.add('hidden');
+    }
+  });
+});
 </script>
 </body>
 </html>

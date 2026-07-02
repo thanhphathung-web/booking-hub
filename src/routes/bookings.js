@@ -16,8 +16,13 @@ function genBookingId() {
 router.get('/', ...requirePerm('bookings:read'), async (req, res) => {
   try {
     const q = {};
-    if (req.query.status)  q.status  = req.query.status;
-    if (req.query.type)    q.type    = req.query.type;
+    if (req.query.status)     q.status     = req.query.status;
+    if (req.query.type)       q.type       = req.query.type;
+    if (req.query.assignedTo) q.assignedTo = req.query.assignedTo;
+    if (req.query.paid !== undefined && req.query.paid !== '') {
+      q['payment.paid'] = req.query.paid === 'true';
+    }
+    // createdAt range
     if (req.query.from || req.query.to) {
       q.createdAt = {};
       if (req.query.from) q.createdAt.$gte = req.query.from + 'T00:00:00.000Z';
@@ -26,13 +31,23 @@ router.get('/', ...requirePerm('bookings:read'), async (req, res) => {
       const days = parseInt(req.query.days);
       if (days > 0) q.createdAt = { $gte: new Date(Date.now() - days * 86400000).toISOString() };
     }
+    // tourDate range
+    if (req.query.tourFrom || req.query.tourTo) {
+      q.tourDate = {};
+      if (req.query.tourFrom) q.tourDate.$gte = req.query.tourFrom;
+      if (req.query.tourTo)   q.tourDate.$lte = req.query.tourTo;
+    }
     if (req.query.search) {
       const escaped = req.query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(escaped, 'i');
       q.$or = [{ bookingId: re }, { 'customer.name': re }, { 'customer.phone': re }, { product: re }];
     }
-    const bookings = await dbAsync.find('bookings', q, { createdAt: -1 });
-    res.json({ bookings, total: bookings.length });
+
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const total = await dbAsync.count('bookings', q);
+    const bookings = await dbAsync.findPage('bookings', q, { createdAt: -1 }, (page-1)*limit, limit);
+    res.json({ bookings, total, page, limit, pages: Math.ceil(total/limit) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -49,7 +64,9 @@ router.get('/stats', requireAuth, async (req, res) => {
       if (days > 0) base.createdAt = { $gte: new Date(Date.now() - days * 86400000).toISOString() };
     }
 
-    const [total, newB, confirmed, inProgress, completed, cancelled, wellness] = await Promise.all([
+    const in3days = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
+    const today   = new Date().toISOString().slice(0,10);
+    const [total, newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent] = await Promise.all([
       dbAsync.count('bookings', { ...base }),
       dbAsync.count('bookings', { ...base, status: 'NEW' }),
       dbAsync.count('bookings', { ...base, status: 'CONFIRMED' }),
@@ -57,8 +74,10 @@ router.get('/stats', requireAuth, async (req, res) => {
       dbAsync.count('bookings', { ...base, status: 'COMPLETED' }),
       dbAsync.count('bookings', { ...base, status: 'CANCELLED' }),
       dbAsync.count('bookings', { ...base, type: 'WELLNESS' }),
+      dbAsync.count('bookings', { ...base, 'payment.paid': false, status: { $nin: ['CANCELLED','COMPLETED'] } }),
+      dbAsync.count('bookings', { tourDate: { $gte: today, $lte: in3days }, status: { $nin: ['CANCELLED','COMPLETED'] }, assignedTo: null }),
     ]);
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness });
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

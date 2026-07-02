@@ -30,6 +30,13 @@ const dbAsync = {
     db[coll].remove(query, opts, (e, n) => e ? rej(e) : res(n))),
   count:   (coll, query) => new Promise((res, rej) =>
     db[coll].count(query, (e, n) => e ? rej(e) : res(n))),
+  findPage: (coll, query, sort, skip, limit) => new Promise((res, rej) => {
+    let cursor = db[coll].find(query);
+    if (sort)  cursor = cursor.sort(sort);
+    if (skip)  cursor = cursor.skip(skip);
+    if (limit) cursor = cursor.limit(limit);
+    cursor.exec((e, docs) => e ? rej(e) : res(docs));
+  }),
 };
 
 module.exports = { db, dbAsync };

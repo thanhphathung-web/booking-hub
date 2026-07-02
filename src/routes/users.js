@@ -3,6 +3,17 @@ const bcrypt  = require('bcryptjs');
 const { dbAsync } = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 
+// GET /api/users/staff — NVDH + WC list for assign dropdowns (all auth users)
+router.get('/staff', requireAuth, async (req, res) => {
+  try {
+    const users = await dbAsync.find('users', { active: true }, { name: 1 });
+    const staff = users
+      .filter(u => ['NVDH','WC','TPDH'].includes(u.role))
+      .map(u => ({ username: u.username, name: u.name, role: u.role }));
+    res.json({ staff });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/users (CEO only)
 router.get('/', requireAuth, async (req, res) => {
   if (req.user.role !== 'CEO') return res.status(403).json({ error: 'CEO only' });
