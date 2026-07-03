@@ -28,6 +28,7 @@ app.use('/api/digest',     require('./src/routes/digest'));
 app.use('/api/products',   require('./src/routes/products'));
 app.use('/api/suppliers',  require('./src/routes/suppliers'));
 app.use('/api/reports',    require('./src/routes/reports'));
+app.use('/api/zalo',       require('./src/routes/zalo'));
 
 // Health check
 app.get('/api/health', (req, res) =>

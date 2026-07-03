@@ -74,6 +74,7 @@ booking-hub/
   name: String,         // display name
   company: String,      // ALL|CTY1|CTY2|CTY3
   email: String,        // nhận email digest nhắc việc (rỗng = không nhận)
+  zaloId: String,       // Zalo user_id trong phạm vi OA — nhận nhắc việc qua Zalo
   active: Boolean,      // default true
   createdAt: ISOString
 }
@@ -163,6 +164,7 @@ GET    /api/users
 POST   /api/users                body: {username, password, role, name, company}
 PATCH  /api/users/:username/password  body: {newPassword}
 PATCH  /api/users/:username/email     body: {email} — CEO hoặc chính chủ
+PATCH  /api/users/:username/notify    body: {email, zaloId} — kênh nhắc việc, CEO hoặc chính chủ
 PATCH  /api/users/:username/toggle    → khoá/mở khoá
 DELETE /api/users/:username
 ```
@@ -173,7 +175,18 @@ GET    /api/digest/preview   → xem nội dung digest sẽ gửi (không gửi 
 POST   /api/digest/send      → gửi digest ngay để test, không đợi cron
 ```
 
-**Email digest:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 email tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua `src/services/mailer.js` (nodemailer). SMTP cấu hình trong .env — bỏ trống = tắt gửi, app vẫn chạy. `composeDigest` tách khỏi kênh gửi để sau này đẩy thêm Zalo OA.
+**Digest nhắc việc:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 tin tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua **2 kênh độc lập**: email (`src/services/mailer.js`, nodemailer, SMTP trong .env) và Zalo OA (`src/services/zalo.js`). Kênh nào chưa cấu hình / user chưa có địa chỉ → skip êm, kết quả trả per-user per-channel.
+
+### Zalo OA (`src/services/zalo.js` + `/api/zalo`)
+```
+GET /api/zalo/status      (CEO) → {configured}
+GET /api/zalo/followers   (CEO) → danh sách follower OA {user_id, display_name} để gán zaloId cho nhân viên
+```
+- Cấu hình .env: `ZALO_APP_ID`, `ZALO_APP_SECRET`, `ZALO_REFRESH_TOKEN` (lấy 1 lần từ developers.zalo.me)
+- Access token hết hạn ~25h → service tự refresh; refresh token Zalo **xoay vòng** mỗi lần dùng → token mới nhất lưu `data/zalo_token.json` (ưu tiên hơn .env)
+- Gửi tin CS `/v3.0/oa/message/cs` — nhân viên phải **follow OA** của công ty trước
+- Flow gán: nhân viên follow OA → CEO vào Quản lý User → "💬 Tra Zalo ID" → copy → dán vào "🔔 Kênh nhắc" của user
+- **Chưa test với OA thật** (cần app_id/secret/token thật) — mọi lỗi API trả về trong kết quả digest per-user, không crash
 
 ### Products (Tour Cost Sheet)
 ```
@@ -325,11 +338,11 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Sản phẩm Tour + Cost Sheet dự toán (CEO/PM quản lý), booking snapshot dự toán chi
 - [x] Quản lý NCC chia sẻ 3 công ty (CEO/TPDH quản lý) + chấm điểm chất lượng 1-5★
 - [x] Báo cáo Post Analysis: lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC, xuất CSV
+- [x] Kênh Zalo OA cho digest nhắc việc (auto-refresh token, tra follower để gán zaloId)
 
 ## Tính năng chưa có (backlog)
 
 - [ ] Báo cáo doanh thu theo tháng / xuất Excel
-- [ ] Đẩy nhắc việc qua Zalo OA (thay/thêm kênh cho email digest)
 - [ ] Assign NVDH/WC trực tiếp từ UI
 - [ ] Filter nâng cao (theo ngày, theo người phụ trách)
 - [ ] API webhook cho website CTY2

@@ -369,9 +369,12 @@
 
     <!-- USERS PAGE -->
     <div id="page-users" class="page">
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Quản lý User</h2>
-        <button onclick="openCreateUser()" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo User mới</button>
+        <div class="flex gap-2">
+          <button onclick="openZaloFollowers()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">💬 Tra Zalo ID</button>
+          <button onclick="openCreateUser()" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo User mới</button>
+        </div>
       </div>
       <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
@@ -578,6 +581,17 @@
   </div>
 </div>
 
+<div id="modalZaloFollowers" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <h3 class="text-lg font-bold mb-1">💬 Follower của Zalo OA</h3>
+    <p class="text-xs text-gray-400 mb-4">Copy Zalo ID rồi dán vào "Kênh nhắc việc" của nhân viên tương ứng.</p>
+    <div id="zaloFollowerList" class="space-y-2 max-h-72 overflow-y-auto"></div>
+    <div class="mt-5">
+      <button onclick="closeModal('modalZaloFollowers')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalRating" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
     <h3 class="text-lg font-bold mb-1">Chấm điểm NCC</h3>
@@ -604,10 +618,15 @@
 
 <div id="modalChangeEmail" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
-    <h3 class="text-lg font-bold mb-1">Cập nhật email</h3>
-    <p class="text-xs text-gray-400 mb-4">Email nhận nhắc việc tự động lúc 07:30 sáng. Để trống = không nhận.</p>
+    <h3 class="text-lg font-bold mb-1">Kênh nhận nhắc việc</h3>
+    <p class="text-xs text-gray-400 mb-4">Nhắc việc tự động gửi lúc 07:30 sáng qua các kênh bên dưới. Để trống = không nhận qua kênh đó.</p>
     <input id="ce-username" type="hidden"/>
-    <div><label class="label">Email</label><input id="ce-email" type="email" class="input" placeholder="email@example.com"/></div>
+    <div class="space-y-3">
+      <div><label class="label">✉️ Email</label><input id="ce-email" type="email" class="input" placeholder="email@example.com"/></div>
+      <div><label class="label">💬 Zalo ID</label><input id="ce-zalo" class="input" placeholder="dãy số — lấy từ nút Tra Zalo ID"/>
+        <p class="text-xs text-gray-400 mt-1">Nhân viên cần follow Zalo OA của công ty trước. CEO bấm "💬 Tra Zalo ID" ở trang User để lấy số.</p>
+      </div>
+    </div>
     <div id="changeEmailError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
     <div class="mt-5 flex gap-3">
       <button onclick="submitChangeEmail()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
@@ -2077,7 +2096,11 @@ async function loadUsers() {
             <td class="px-4 py-3 font-mono font-semibold">${esc(u.username)}</td>
             <td class="px-4 py-3">
               <div>${esc(u.name)}</div>
-              <div class="text-xs text-gray-400">${u.email ? '✉️ ' + esc(u.email) : '<span class="text-gray-300">chưa có email</span>'}</div>
+              <div class="text-xs text-gray-400">
+                ${u.email ? '✉️ ' + esc(u.email) : ''}
+                ${u.zaloId ? ' 💬 Zalo' : ''}
+                ${!u.email && !u.zaloId ? '<span class="text-gray-300">chưa có kênh nhắc việc</span>' : ''}
+              </div>
             </td>
             <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full font-semibold ${roleColors[u.role]||'bg-gray-100 text-gray-700'}">${esc(u.role)}</span></td>
             <td class="px-4 py-3 text-gray-500">${esc(u.company)}</td>
@@ -2088,8 +2111,8 @@ async function loadUsers() {
               <div class="flex gap-2 flex-wrap">
                 <button data-u="${esc(u.username)}" onclick="openChangePass(this.dataset.u)"
                   class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔑 Đổi pass</button>
-                <button data-u="${esc(u.username)}" data-e="${esc(u.email||'')}" onclick="openChangeEmail(this.dataset.u, this.dataset.e)"
-                  class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✉️ Email</button>
+                <button data-u="${esc(u.username)}" data-e="${esc(u.email||'')}" data-z="${esc(u.zaloId||'')}" onclick="openChangeEmail(this.dataset.u, this.dataset.e, this.dataset.z)"
+                  class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔔 Kênh nhắc</button>
                 <button data-u="${esc(u.username)}" onclick="toggleUser(this.dataset.u)"
                   class="text-xs border px-2 py-1 rounded ${u.active !== false ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">
                   ${u.active !== false ? '🔒 Khoá' : '🔓 Mở'}
@@ -2133,9 +2156,10 @@ async function submitCreateUser() {
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
-function openChangeEmail(username, currentEmail) {
+function openChangeEmail(username, currentEmail, currentZalo) {
   document.getElementById('ce-username').value = username;
   document.getElementById('ce-email').value = currentEmail || '';
+  document.getElementById('ce-zalo').value = currentZalo || '';
   document.getElementById('changeEmailError').classList.add('hidden');
   document.getElementById('modalChangeEmail').classList.remove('hidden');
 }
@@ -2143,13 +2167,36 @@ function openChangeEmail(username, currentEmail) {
 async function submitChangeEmail() {
   const username = document.getElementById('ce-username').value;
   const email    = document.getElementById('ce-email').value.trim();
+  const zaloId   = document.getElementById('ce-zalo').value.trim();
   const errEl    = document.getElementById('changeEmailError');
   try {
-    const res = await api(`/users/${username}/email`, { method:'PATCH', body: JSON.stringify({email}) });
+    const res = await api(`/users/${username}/notify`, { method:'PATCH', body: JSON.stringify({email, zaloId}) });
     closeModal('modalChangeEmail');
     toast(res.message);
     loadUsers();
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function openZaloFollowers() {
+  const listEl = document.getElementById('zaloFollowerList');
+  listEl.innerHTML = '<div class="skeleton h-8 w-full"></div>';
+  document.getElementById('modalZaloFollowers').classList.remove('hidden');
+  try {
+    const { followers, total } = await api('/zalo/followers');
+    listEl.innerHTML = !followers.length
+      ? '<p class="text-gray-400 text-sm">OA chưa có follower nào — nhờ nhân viên quét QR follow OA công ty trước.</p>'
+      : `<p class="text-xs text-gray-400 mb-2">${total} follower</p>` + followers.map(f => `
+        <div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5">
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${esc(f.display_name)}</p>
+            <p class="text-xs font-mono text-gray-500">${esc(f.user_id)}</p>
+          </div>
+          <button data-id="${esc(f.user_id)}" onclick="navigator.clipboard.writeText(this.dataset.id).then(()=>toast('Đã copy Zalo ID'))"
+            class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 flex-shrink-0">📋 Copy</button>
+        </div>`).join('');
+  } catch(e) {
+    listEl.innerHTML = `<p class="text-red-600 text-sm">${esc(e.message)}</p>`;
+  }
 }
 
 function openChangePass(username) {

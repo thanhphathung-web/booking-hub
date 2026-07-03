@@ -3,6 +3,7 @@
 const { dbAsync } = require('../db/database');
 const { getRunningBookings, tasksFor } = require('./tasks');
 const mailer = require('./mailer');
+const zalo = require('./zalo');
 
 function fmtTask(t) {
   return `- [${t.code}] ${t.title}\n    ${t.bookingId} · ${t.product} · Khởi hành ${t.tourDate}${t.deadline ? ` · Hạn ${t.deadline}` : ''}`;
@@ -40,23 +41,33 @@ async function buildAllDigests() {
     const tasks = tasksFor(u, bookings, today);
     if (!tasks.length) return null;
     return { username: u.username, name: u.name, role: u.role,
-      email: u.email || null, taskCount: tasks.length,
+      email: u.email || null, zaloId: u.zaloId || null, taskCount: tasks.length,
       ...composeDigest(u, tasks, today) };
   }).filter(Boolean);
 }
 
+// Gửi qua cả 2 kênh — kênh nào chưa cấu hình / user chưa có địa chỉ thì skip êm
 async function sendDailyDigest() {
   const digests = await buildAllDigests();
   const results = [];
   for (const d of digests) {
-    if (!d.email) { results.push({ username: d.username, skipped: 'chưa có email' }); continue; }
-    if (!mailer.isConfigured()) { results.push({ username: d.username, skipped: 'SMTP chưa cấu hình' }); continue; }
-    try {
-      await mailer.send(d.email, d.subject, d.text);
-      results.push({ username: d.username, sent: true, tasks: d.taskCount });
-    } catch (e) {
-      results.push({ username: d.username, error: e.message });
+    const r = { username: d.username, tasks: d.taskCount, email: null, zalo: null };
+
+    if (!d.email)                    r.email = 'skip: chưa có email';
+    else if (!mailer.isConfigured()) r.email = 'skip: SMTP chưa cấu hình';
+    else {
+      try { await mailer.send(d.email, d.subject, d.text); r.email = 'đã gửi'; }
+      catch (e) { r.email = 'lỗi: ' + e.message; }
     }
+
+    if (!d.zaloId)                 r.zalo = 'skip: chưa có Zalo ID';
+    else if (!zalo.isConfigured()) r.zalo = 'skip: Zalo OA chưa cấu hình';
+    else {
+      try { await zalo.send(d.zaloId, d.subject + '\n\n' + d.text); r.zalo = 'đã gửi'; }
+      catch (e) { r.zalo = 'lỗi: ' + e.message; }
+    }
+
+    results.push(r);
   }
   return results;
 }

@@ -63,6 +63,20 @@ router.patch('/:username/email', requireAuth, async (req, res) => {
   res.json({ message: email ? `Đã cập nhật email → ${email}` : 'Đã xoá email' });
 });
 
+// PATCH /api/users/:username/notify — kênh nhận nhắc việc (email + Zalo ID)
+router.patch('/:username/notify', requireAuth, async (req, res) => {
+  if (req.user.role !== 'CEO' && req.user.username !== req.params.username)
+    return res.status(403).json({ error: 'Không có quyền' });
+  const email  = (req.body.email  || '').trim();
+  const zaloId = (req.body.zaloId || '').trim();
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email không hợp lệ' });
+  if (zaloId && !/^\d{5,25}$/.test(zaloId)) return res.status(400).json({ error: 'Zalo ID phải là dãy số (lấy từ danh sách follower OA)' });
+  const user = await dbAsync.findOne('users', { username: req.params.username });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
+  await dbAsync.update('users', { username: req.params.username }, { $set: { email, zaloId } });
+  res.json({ message: 'Đã cập nhật kênh nhắc việc' });
+});
+
 module.exports = router;
 
 // PATCH /api/users/:username/toggle (CEO only)
