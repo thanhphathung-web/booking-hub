@@ -3,6 +3,7 @@ const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { ensureChecklist } = require('../db/tourChecklist');
 const { getRunningBookings, tasksFor } = require('../services/tasks');
+const { estimateCost } = require('./products');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -116,9 +117,16 @@ router.get('/:id', ...requirePerm('bookings:read'), async (req, res) => {
 // Called by Cty2 website OR admin form
 router.post('/', ...requirePerm('bookings:create'), async (req, res) => {
   try {
-    const { product, tourDate, adults=1, children=0, customer, specialReqs='', type='STANDARD', wellness={} } = req.body;
+    const { product, tourDate, adults=1, children=0, customer, specialReqs='', type='STANDARD', wellness={}, productId=null } = req.body;
     if (!product || !tourDate || !customer?.name || !customer?.phone)
       return res.status(400).json({ error: 'Thiếu thông tin bắt buộc: product, tourDate, customer.name, customer.phone' });
+
+    // Snapshot dự toán chi từ Cost Sheet của sản phẩm (nếu chọn) — cost sheet đổi sau này không ảnh hưởng booking cũ
+    let costEstimate = null;
+    if (productId) {
+      const prd = await dbAsync.findOne('products', { productId });
+      if (prd) costEstimate = estimateCost(prd, (parseInt(adults) || 1) + (parseInt(children) || 0));
+    }
 
     const bookingId = genBookingId();
     const now = new Date().toISOString();
@@ -136,6 +144,8 @@ router.post('/', ...requirePerm('bookings:create'), async (req, res) => {
       notes: [],
       expenses: [],       // sổ chi phí thực tế
       dailyReports: [],   // Daily Tour Report
+      productId,          // sản phẩm gốc (nếu tạo từ catalog)
+      costEstimate,       // dự toán chi snapshot từ Cost Sheet
       createdAt: now,
       updatedAt: now,
       createdBy: req.user.username,

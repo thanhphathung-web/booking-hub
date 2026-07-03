@@ -175,6 +175,29 @@ POST   /api/digest/send      → gửi digest ngay để test, không đợi cro
 
 **Email digest:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 email tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua `src/services/mailer.js` (nodemailer). SMTP cấu hình trong .env — bỏ trống = tắt gửi, app vẫn chạy. `composeDigest` tách khỏi kênh gửi để sau này đẩy thêm Zalo OA.
 
+### Products (Tour Cost Sheet)
+```
+GET    /api/products             ?active=true&type=   (mọi role)
+GET    /api/products/:id
+POST   /api/products             (CEO/PM — products:manage)
+PATCH  /api/products/:id         (CEO/PM) — sửa cả costSheet
+PATCH  /api/products/:id/toggle  (CEO/PM) — ngừng bán / mở bán
+DELETE /api/products/:id         (CEO only)
+```
+`products.db`: `{ productId (PRD-xxx), name, type, durationDays, defaultPrice (giá bán/khách), description, costSheet: [{category, desc, nccId?, costType: PER_PERSON|PER_GROUP, amount}], active }`.
+Tạo booking với `productId` → server snapshot `costEstimate` = Σ PER_GROUP + Σ PER_PERSON × (adults+children) vào booking (cost sheet đổi sau không ảnh hưởng booking cũ). Detail hiển thị thực chi vs dự toán.
+
+### Suppliers (NCC)
+```
+GET    /api/suppliers            ?category=&active=true   (mọi role, kèm avgRating)
+POST   /api/suppliers            (CEO/TPDH — ncc:manage)
+PATCH  /api/suppliers/:id        (CEO/TPDH)
+PATCH  /api/suppliers/:id/toggle (CEO/TPDH)
+POST   /api/suppliers/:id/rating body: {score 1-5, note?, bookingId?}  (mọi role — PT-05)
+DELETE /api/suppliers/:id        (CEO only)
+```
+`suppliers.db`: `{ nccId (NCC-xxx), name, category (XE|KHACHSAN|ANUONG|VE|BAOHIEM|YTE|KHAC), phone, email, contact, address, notes, ratings: [{score, note, bookingId, by, name, at}], active }`.
+
 ---
 
 ## Roles & Permissions
@@ -292,12 +315,13 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Sổ chi phí thực tế per booking + lãi/lỗ tạm tính
 - [x] Daily Tour Report có cấu trúc (khi IN_PROGRESS)
 - [x] Email digest nhắc việc 07:30 sáng (node-cron + nodemailer, tắt được qua .env)
+- [x] Sản phẩm Tour + Cost Sheet dự toán (CEO/PM quản lý), booking snapshot dự toán chi
+- [x] Quản lý NCC chia sẻ 3 công ty (CEO/TPDH quản lý) + chấm điểm chất lượng 1-5★
 
 ## Tính năng chưa có (backlog)
 
 - [ ] Báo cáo doanh thu theo tháng / xuất Excel
-- [ ] Quản lý NCC (nhà cung cấp) — chia sẻ 3 công ty + Tour Cost Sheet (Pre-Sales)
-- [ ] Báo cáo Post Analysis: dự toán vs chi thực tế (cần NCC module trước)
+- [ ] Báo cáo Post Analysis tổng hợp: lãi/lỗ per tour, per NCC (dữ liệu costEstimate + expenses đã có sẵn)
 - [ ] Đẩy nhắc việc qua Zalo OA (thay/thêm kênh cho email digest)
 - [ ] Assign NVDH/WC trực tiếp từ UI
 - [ ] Filter nâng cao (theo ngày, theo người phụ trách)

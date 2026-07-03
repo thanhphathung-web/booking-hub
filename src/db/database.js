@@ -44,3 +44,7 @@ module.exports = { db, dbAsync };
 // ── Checklist datastores ──────────────────────────────────
 db.checklist_items = new Datastore({ filename: path.join(DATA_DIR, 'checklist_items.db'), autoload: true });
 db.checklist_logs  = new Datastore({ filename: path.join(DATA_DIR, 'checklist_logs.db'),  autoload: true });
+
+// ── Products + NCC (Pre-Sales) ────────────────────────────
+db.products  = new Datastore({ filename: path.join(DATA_DIR, 'products.db'),  autoload: true });
+db.suppliers = new Datastore({ filename: path.join(DATA_DIR, 'suppliers.db'), autoload: true });

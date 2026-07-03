@@ -105,6 +105,12 @@
       <a onclick="showPage('new-booking')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>➕</span><span>Tạo Booking mới</span>
       </a>
+      <a onclick="showPage('products')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+        <span>📦</span><span>Sản phẩm Tour</span>
+      </a>
+      <a onclick="showPage('suppliers')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+        <span>🤝</span><span>NCC</span>
+      </a>
       <div id="navUsers" class="hidden">
         <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
           <span>👥</span><span>Quản lý User</span>
@@ -261,6 +267,12 @@
       <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
         <div class="grid grid-cols-2 gap-4">
           <div class="col-span-2">
+            <label class="label">Chọn từ catalog sản phẩm (tuỳ chọn — tự điền tên, loại, giá & dự toán chi)</label>
+            <select id="f-productSel" class="input" onchange="applyProductSelect()">
+              <option value="">— Nhập tay, không dùng catalog —</option>
+            </select>
+          </div>
+          <div class="col-span-2">
             <label class="label">Tên sản phẩm / Tour *</label>
             <input id="f-product" class="input" placeholder="vd: Tour Đà Lạt 3N2Đ"/>
           </div>
@@ -359,6 +371,29 @@
       <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
+    <!-- PRODUCTS PAGE -->
+    <div id="page-products" class="page">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">📦 Sản phẩm Tour</h2>
+        <button id="btnNewProduct" onclick="openProductModal()" class="hidden bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo sản phẩm</button>
+      </div>
+      <div id="productTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- SUPPLIERS PAGE -->
+    <div id="page-suppliers" class="page">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">🤝 Nhà cung cấp (NCC)</h2>
+        <button id="btnNewSupplier" onclick="openSupplierModal()" class="hidden bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Thêm NCC</button>
+      </div>
+      <div class="mb-4 flex gap-2 items-center">
+        <select id="spCategoryFilter" onchange="loadSuppliers()" class="input" style="width:auto">
+          <option value="">Tất cả loại</option>
+        </select>
+      </div>
+      <div id="supplierTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
     <!-- REVENUE PAGE -->
     <div id="page-revenue" class="page">
       <h2 class="text-2xl font-bold text-gray-800 mb-6">💰 Báo cáo Doanh thu</h2>
@@ -450,6 +485,83 @@
     <div class="mt-5 flex gap-3">
       <button onclick="submitCreateUser()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Tạo</button>
       <button onclick="closeModal('modalCreateUser')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalProduct" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-2xl my-8">
+    <h3 id="pr-title" class="text-lg font-bold mb-5">Tạo sản phẩm mới</h3>
+    <input id="pr-id" type="hidden"/>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="col-span-2"><label class="label">Tên sản phẩm *</label><input id="pr-name" class="input" placeholder="vd: Tour Đà Lạt 3N2Đ"/></div>
+      <div><label class="label">Loại</label>
+        <select id="pr-type" class="input"><option value="STANDARD">STANDARD</option><option value="WELLNESS">WELLNESS</option></select>
+      </div>
+      <div><label class="label">Số ngày</label><input id="pr-days" type="number" min="1" value="1" class="input"/></div>
+      <div class="col-span-2"><label class="label">Giá bán / khách (VNĐ)</label><input id="pr-price" type="number" min="0" value="0" class="input"/></div>
+      <div class="col-span-2"><label class="label">Mô tả</label><textarea id="pr-desc" class="input h-16" placeholder="Lịch trình tóm tắt, điểm nổi bật..."></textarea></div>
+    </div>
+    <div class="border-t mt-4 pt-4">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-semibold text-gray-600">💰 Tour Cost Sheet — dự toán chi phí</p>
+        <button onclick="addCsRow()" class="text-xs bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-600">+ Thêm dòng</button>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">"/khách" nhân theo số khách của đoàn, "/đoàn" tính 1 lần. Dự toán được chốt (snapshot) vào booking lúc tạo.</p>
+      <div id="csRows" class="space-y-2"></div>
+      <div class="text-right text-xs text-gray-500 mt-2" id="csSummary"></div>
+    </div>
+    <div id="productError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitProduct()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalProduct')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalSupplier" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <h3 id="sp-title" class="text-lg font-bold mb-5">Thêm NCC mới</h3>
+    <input id="sp-id" type="hidden"/>
+    <div class="space-y-3">
+      <div><label class="label">Tên NCC *</label><input id="sp-name" class="input" placeholder="vd: Nhà xe Phương Trang"/></div>
+      <div><label class="label">Loại dịch vụ</label><select id="sp-category" class="input"></select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label">Người liên hệ</label><input id="sp-contact" class="input" placeholder="Tên người phụ trách"/></div>
+        <div><label class="label">SĐT</label><input id="sp-phone" class="input" placeholder="09xxxxxxxx"/></div>
+      </div>
+      <div><label class="label">Email</label><input id="sp-email" type="email" class="input" placeholder="email@ncc.com"/></div>
+      <div><label class="label">Địa chỉ</label><input id="sp-address" class="input"/></div>
+      <div><label class="label">Ghi chú</label><textarea id="sp-notes" class="input h-16" placeholder="Điều khoản thanh toán, lưu ý..."></textarea></div>
+    </div>
+    <div id="supplierError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitSupplier()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalSupplier')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalRating" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <h3 class="text-lg font-bold mb-1">Chấm điểm NCC</h3>
+    <p id="rt-name" class="text-sm text-gray-500 mb-4"></p>
+    <input id="rt-id" type="hidden"/>
+    <div class="space-y-3">
+      <div><label class="label">Điểm chất lượng *</label>
+        <select id="rt-score" class="input">
+          <option value="5">★★★★★ Xuất sắc</option>
+          <option value="4">★★★★ Tốt</option>
+          <option value="3">★★★ Bình thường</option>
+          <option value="2">★★ Kém</option>
+          <option value="1">★ Rất kém</option>
+        </select>
+      </div>
+      <div><label class="label">Ghi chú</label><input id="rt-note" class="input" placeholder="vd: xe sạch, tài xế đúng giờ"/></div>
+    </div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitRating()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Chấm điểm</button>
+      <button onclick="closeModal('modalRating')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
     </div>
   </div>
 </div>
@@ -567,8 +679,21 @@ function showApp() {
   if (['CEO','KETOAN'].includes(USER.role)) {
     document.getElementById('navKetoan').classList.remove('hidden');
   }
+  if (['CEO','PM'].includes(USER.role))   document.getElementById('btnNewProduct').classList.remove('hidden');
+  if (['CEO','TPDH'].includes(USER.role)) document.getElementById('btnNewSupplier').classList.remove('hidden');
   loadStaff();
+  loadCatalogCaches();
   showPage('dashboard');
+}
+
+let PRODUCTS_LIST = [];
+let SUPPLIERS_LIST = [];
+async function loadCatalogCaches() {
+  try {
+    const [p, s] = await Promise.all([api('/products?active=true'), api('/suppliers?active=true')]);
+    PRODUCTS_LIST = p.products;
+    SUPPLIERS_LIST = s.suppliers;
+  } catch(e) { /* non-critical */ }
 }
 
 async function loadStaff() {
@@ -590,6 +715,9 @@ function showPage(page) {
   if (page === 'dashboard')  loadDashboard();
   if (page === 'bookings')   { BOOKING_PAGE = 1; loadBookings(); }
   if (page === 'users')      loadUsers();
+  if (page === 'products')   loadProducts();
+  if (page === 'suppliers')  loadSuppliers();
+  if (page === 'new-booking') fillProductSelect();
   if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
   if (page === 'revenue')    loadRevenue();
@@ -1304,6 +1432,10 @@ function renderExpenses(b) {
         <div class="flex justify-between"><span class="text-gray-500">Tổng chi</span><strong class="text-red-600">−${total.toLocaleString('vi-VN')}đ</strong></div>
         <div class="flex justify-between"><span class="text-gray-500">Lãi / lỗ tạm tính</span>
           <strong class="${profit >= 0 ? 'text-green-600' : 'text-red-600'}">${profit >= 0 ? '+' : ''}${profit.toLocaleString('vi-VN')}đ</strong></div>
+        ${b.costEstimate != null ? `
+        <div class="flex justify-between border-t pt-1 mt-1"><span class="text-gray-500">Dự toán chi (Cost Sheet)</span><strong>${Number(b.costEstimate).toLocaleString('vi-VN')}đ</strong></div>
+        <div class="flex justify-between"><span class="text-gray-500">Thực chi vs dự toán</span>
+          <strong class="${total <= b.costEstimate ? 'text-green-600' : 'text-red-600'}">${total <= b.costEstimate ? '✅ ' : '⚠️ vượt '}${Math.abs(total - b.costEstimate).toLocaleString('vi-VN')}đ</strong></div>` : ''}
       </div>
       <div class="border-t mt-3 pt-3 grid grid-cols-2 gap-2">
         <select id="ex-cat" class="input text-sm col-span-2">
@@ -1345,7 +1477,290 @@ async function delExpense(bookingId, expId) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ── Products (Tour Cost Sheet) ────────────────────────────
+async function loadProducts() {
+  const tableEl = document.getElementById('productTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(3).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const { products } = await api('/products');
+    if (!products.length) {
+      tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Chưa có sản phẩm nào. Tạo sản phẩm với Cost Sheet để booking tự có dự toán chi phí.</p>';
+      return;
+    }
+    const canManage = ['CEO','PM'].includes(USER.role);
+    tableEl.innerHTML = `
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
+          <tr><th class="px-4 py-3">Sản phẩm</th><th class="px-4 py-3">Loại</th><th class="px-4 py-3">Ngày</th>
+            <th class="px-4 py-3">Giá bán/khách</th><th class="px-4 py-3">Dự toán chi</th>
+            <th class="px-4 py-3">Trạng thái</th>${canManage ? '<th class="px-4 py-3">Action</th>' : ''}</tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+        ${products.map(p => {
+          const perPerson = (p.costSheet||[]).filter(r=>r.costType==='PER_PERSON').reduce((s,r)=>s+r.amount,0);
+          const perGroup  = (p.costSheet||[]).filter(r=>r.costType==='PER_GROUP').reduce((s,r)=>s+r.amount,0);
+          return `
+          <tr class="hover:bg-gray-50 ${!p.active ? 'opacity-50' : ''}">
+            <td class="px-4 py-3">
+              <div class="font-medium">${esc(p.name)}</div>
+              <div class="text-xs text-gray-400 max-w-64 truncate">${esc(p.description) || '<span class="text-gray-300">—</span>'}</div>
+            </td>
+            <td class="px-4 py-3">${p.type==='WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-400">STD</span>'}</td>
+            <td class="px-4 py-3">${p.durationDays}N</td>
+            <td class="px-4 py-3 font-semibold">${Number(p.defaultPrice).toLocaleString('vi-VN')}đ</td>
+            <td class="px-4 py-3 text-xs text-gray-500">
+              ${(p.costSheet||[]).length === 0 ? '<span class="text-orange-500">⚠️ chưa có Cost Sheet</span>'
+                : `${perPerson.toLocaleString('vi-VN')}đ/khách${perGroup ? ' + ' + perGroup.toLocaleString('vi-VN') + 'đ/đoàn' : ''}`}
+            </td>
+            <td class="px-4 py-3">${p.active ? '<span class="text-xs text-green-600 font-semibold">✅ Đang bán</span>' : '<span class="text-xs text-gray-400 font-semibold">⏸ Ngừng bán</span>'}</td>
+            ${canManage ? `<td class="px-4 py-3"><div class="flex gap-2">
+              <button data-id="${p.productId}" onclick="openProductModal(this.dataset.id)" class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✏️ Sửa</button>
+              <button data-id="${p.productId}" onclick="toggleProduct(this.dataset.id)" class="text-xs border px-2 py-1 rounded ${p.active ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">${p.active ? '⏸ Ngừng' : '▶ Mở bán'}</button>
+            </div></td>` : ''}
+          </tr>`;
+        }).join('')}
+        </tbody></table></div>`;
+    window._products = products;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+function csRowHtml(row = {}) {
+  const nccOptions = '<option value="">— NCC —</option>' +
+    SUPPLIERS_LIST.map(s => `<option value="${s.nccId}" ${row.nccId===s.nccId?'selected':''}>${esc(s.name)}</option>`).join('');
+  return `
+  <div class="cs-row grid grid-cols-12 gap-1.5 items-center">
+    <select class="cs-cat input text-xs col-span-2">
+      ${Object.entries(EXPENSE_LABELS).map(([k,v]) => `<option value="${k}" ${row.category===k?'selected':''}>${v}</option>`).join('')}
+    </select>
+    <input class="cs-desc input text-xs col-span-3" placeholder="Mô tả *" value="${esc(row.desc||'')}"/>
+    <select class="cs-ncc input text-xs col-span-2">${nccOptions}</select>
+    <select class="cs-type input text-xs col-span-2">
+      <option value="PER_PERSON" ${row.costType!=='PER_GROUP'?'selected':''}>/khách</option>
+      <option value="PER_GROUP" ${row.costType==='PER_GROUP'?'selected':''}>/đoàn</option>
+    </select>
+    <input class="cs-amount input text-xs col-span-2" type="number" min="0" placeholder="VNĐ" value="${row.amount||''}" oninput="updateCsSummary()"/>
+    <button onclick="this.closest('.cs-row').remove(); updateCsSummary()" class="text-red-400 hover:text-red-600 text-sm col-span-1">✕</button>
+  </div>`;
+}
+
+function addCsRow(row) {
+  document.getElementById('csRows').insertAdjacentHTML('beforeend', csRowHtml(row));
+  updateCsSummary();
+}
+
+function collectCostSheet() {
+  return [...document.querySelectorAll('#csRows .cs-row')].map(r => ({
+    category: r.querySelector('.cs-cat').value,
+    desc:     r.querySelector('.cs-desc').value.trim(),
+    nccId:    r.querySelector('.cs-ncc').value || null,
+    costType: r.querySelector('.cs-type').value,
+    amount:   parseInt(r.querySelector('.cs-amount').value) || 0,
+  }));
+}
+
+function updateCsSummary() {
+  const rows = collectCostSheet();
+  const pp = rows.filter(r=>r.costType==='PER_PERSON').reduce((s,r)=>s+r.amount,0);
+  const pg = rows.filter(r=>r.costType==='PER_GROUP').reduce((s,r)=>s+r.amount,0);
+  document.getElementById('csSummary').textContent = rows.length
+    ? `Tổng dự toán: ${pp.toLocaleString('vi-VN')}đ/khách + ${pg.toLocaleString('vi-VN')}đ/đoàn`
+    : '';
+}
+
+function openProductModal(productId) {
+  const p = productId ? (window._products||[]).find(x => x.productId === productId) : null;
+  document.getElementById('pr-title').textContent = p ? `Sửa sản phẩm — ${p.name}` : 'Tạo sản phẩm mới';
+  document.getElementById('pr-id').value    = p ? p.productId : '';
+  document.getElementById('pr-name').value  = p ? p.name : '';
+  document.getElementById('pr-type').value  = p ? p.type : 'STANDARD';
+  document.getElementById('pr-days').value  = p ? p.durationDays : 1;
+  document.getElementById('pr-price').value = p ? p.defaultPrice : 0;
+  document.getElementById('pr-desc').value  = p ? p.description : '';
+  document.getElementById('csRows').innerHTML = '';
+  (p?.costSheet || []).forEach(row => addCsRow(row));
+  updateCsSummary();
+  document.getElementById('productError').classList.add('hidden');
+  document.getElementById('modalProduct').classList.remove('hidden');
+}
+
+async function submitProduct() {
+  const errEl = document.getElementById('productError');
+  const err = m => { errEl.textContent = m; errEl.classList.remove('hidden'); };
+  errEl.classList.add('hidden');
+  const name = document.getElementById('pr-name').value.trim();
+  if (!name) return err('Vui lòng nhập tên sản phẩm');
+  const costSheet = collectCostSheet();
+  if (costSheet.some(r => !r.desc)) return err('Mỗi dòng Cost Sheet cần mô tả');
+  if (costSheet.some(r => r.amount <= 0)) return err('Số tiền dự toán phải lớn hơn 0');
+
+  const body = {
+    name, type: document.getElementById('pr-type').value,
+    durationDays: parseInt(document.getElementById('pr-days').value) || 1,
+    defaultPrice: parseInt(document.getElementById('pr-price').value) || 0,
+    description: document.getElementById('pr-desc').value,
+    costSheet,
+  };
+  const id = document.getElementById('pr-id').value;
+  try {
+    if (id) await api(`/products/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+    else    await api('/products',       { method:'POST',  body: JSON.stringify(body) });
+    closeModal('modalProduct');
+    toast(id ? 'Đã cập nhật sản phẩm' : 'Đã tạo sản phẩm');
+    loadProducts();
+    loadCatalogCaches();
+  } catch(e) { err(e.message); }
+}
+
+async function toggleProduct(id) {
+  try {
+    const res = await api(`/products/${id}/toggle`, { method:'PATCH' });
+    toast(res.message);
+    loadProducts();
+    loadCatalogCaches();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Suppliers (NCC) ───────────────────────────────────────
+function fillNccCategorySelects() {
+  const opts = Object.entries(EXPENSE_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+  document.getElementById('sp-category').innerHTML = opts;
+  const filter = document.getElementById('spCategoryFilter');
+  if (filter.options.length <= 1) filter.innerHTML = '<option value="">Tất cả loại</option>' + opts;
+}
+
+async function loadSuppliers() {
+  fillNccCategorySelects();
+  const tableEl = document.getElementById('supplierTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(3).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const cat = document.getElementById('spCategoryFilter').value;
+    const { suppliers } = await api(`/suppliers${cat ? '?category=' + cat : ''}`);
+    if (!suppliers.length) {
+      tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Chưa có NCC nào</p>';
+      return;
+    }
+    const canManage = ['CEO','TPDH'].includes(USER.role);
+    tableEl.innerHTML = `
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
+          <tr><th class="px-4 py-3">Tên NCC</th><th class="px-4 py-3">Loại</th><th class="px-4 py-3">Liên hệ</th>
+            <th class="px-4 py-3">Đánh giá</th><th class="px-4 py-3">Trạng thái</th><th class="px-4 py-3">Action</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+        ${suppliers.map(s => `
+          <tr class="hover:bg-gray-50 ${!s.active ? 'opacity-50' : ''}">
+            <td class="px-4 py-3">
+              <div class="font-medium">${esc(s.name)}</div>
+              <div class="text-xs text-gray-400 max-w-52 truncate">${esc(s.notes) || ''}</div>
+            </td>
+            <td class="px-4 py-3 text-xs">${EXPENSE_LABELS[s.category] || s.category}</td>
+            <td class="px-4 py-3 text-xs text-gray-500">
+              <div>${esc(s.contact) || '—'}</div>
+              <div>${esc(s.phone) || ''}</div>
+            </td>
+            <td class="px-4 py-3">
+              ${s.avgRating ? `<span class="text-yellow-500 font-semibold">★ ${s.avgRating}</span> <span class="text-xs text-gray-400">(${s.ratingCount})</span>` : '<span class="text-xs text-gray-300">chưa chấm</span>'}
+            </td>
+            <td class="px-4 py-3">${s.active ? '<span class="text-xs text-green-600 font-semibold">✅ Hợp tác</span>' : '<span class="text-xs text-gray-400 font-semibold">⏸ Ngừng</span>'}</td>
+            <td class="px-4 py-3"><div class="flex gap-2 flex-wrap">
+              <button data-id="${s.nccId}" data-n="${esc(s.name)}" onclick="openRatingModal(this.dataset.id, this.dataset.n)" class="text-xs border border-yellow-300 text-yellow-600 px-2 py-1 rounded hover:bg-yellow-50">⭐ Chấm</button>
+              ${canManage ? `
+              <button data-id="${s.nccId}" onclick="openSupplierModal(this.dataset.id)" class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✏️ Sửa</button>
+              <button data-id="${s.nccId}" onclick="toggleSupplier(this.dataset.id)" class="text-xs border px-2 py-1 rounded ${s.active ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">${s.active ? '⏸ Ngừng' : '▶ Kích hoạt'}</button>` : ''}
+            </div></td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+    window._suppliers = suppliers;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+function openSupplierModal(nccId) {
+  fillNccCategorySelects();
+  const s = nccId ? (window._suppliers||[]).find(x => x.nccId === nccId) : null;
+  document.getElementById('sp-title').textContent = s ? `Sửa NCC — ${s.name}` : 'Thêm NCC mới';
+  document.getElementById('sp-id').value       = s ? s.nccId : '';
+  document.getElementById('sp-name').value     = s ? s.name : '';
+  document.getElementById('sp-category').value = s ? s.category : 'XE';
+  document.getElementById('sp-contact').value  = s ? s.contact : '';
+  document.getElementById('sp-phone').value    = s ? s.phone : '';
+  document.getElementById('sp-email').value    = s ? s.email : '';
+  document.getElementById('sp-address').value  = s ? s.address : '';
+  document.getElementById('sp-notes').value    = s ? s.notes : '';
+  document.getElementById('supplierError').classList.add('hidden');
+  document.getElementById('modalSupplier').classList.remove('hidden');
+}
+
+async function submitSupplier() {
+  const errEl = document.getElementById('supplierError');
+  const name = document.getElementById('sp-name').value.trim();
+  if (!name) { errEl.textContent = 'Vui lòng nhập tên NCC'; errEl.classList.remove('hidden'); return; }
+  const body = {
+    name, category: document.getElementById('sp-category').value,
+    contact: document.getElementById('sp-contact').value,
+    phone:   document.getElementById('sp-phone').value,
+    email:   document.getElementById('sp-email').value,
+    address: document.getElementById('sp-address').value,
+    notes:   document.getElementById('sp-notes').value,
+  };
+  const id = document.getElementById('sp-id').value;
+  try {
+    if (id) await api(`/suppliers/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+    else    await api('/suppliers',       { method:'POST',  body: JSON.stringify(body) });
+    closeModal('modalSupplier');
+    toast(id ? 'Đã cập nhật NCC' : 'Đã thêm NCC');
+    loadSuppliers();
+    loadCatalogCaches();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function toggleSupplier(id) {
+  try {
+    const res = await api(`/suppliers/${id}/toggle`, { method:'PATCH' });
+    toast(res.message);
+    loadSuppliers();
+    loadCatalogCaches();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function openRatingModal(nccId, name) {
+  document.getElementById('rt-id').value = nccId;
+  document.getElementById('rt-name').textContent = name;
+  document.getElementById('rt-score').value = '5';
+  document.getElementById('rt-note').value = '';
+  document.getElementById('modalRating').classList.remove('hidden');
+}
+
+async function submitRating() {
+  const id = document.getElementById('rt-id').value;
+  try {
+    const res = await api(`/suppliers/${id}/rating`, { method:'POST', body: JSON.stringify({
+      score: parseInt(document.getElementById('rt-score').value),
+      note:  document.getElementById('rt-note').value,
+    })});
+    closeModal('modalRating');
+    toast(res.message);
+    loadSuppliers();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── New Booking form ──────────────────────────────────────
+function fillProductSelect() {
+  const sel = document.getElementById('f-productSel');
+  sel.innerHTML = '<option value="">— Nhập tay, không dùng catalog —</option>' +
+    PRODUCTS_LIST.map(p => `<option value="${p.productId}">${esc(p.name)} · ${p.type} · ${Number(p.defaultPrice).toLocaleString('vi-VN')}đ/khách</option>`).join('');
+}
+
+function applyProductSelect() {
+  const id = document.getElementById('f-productSel').value;
+  const p = PRODUCTS_LIST.find(x => x.productId === id);
+  if (!p) return;
+  document.getElementById('f-product').value = p.name;
+  document.getElementById('f-type').value = p.type;
+  toggleWellness();
+  const adults = parseInt(document.getElementById('f-adults').value) || 1;
+  document.getElementById('f-amount').value = p.defaultPrice * adults;
+}
+
 function toggleWellness() {
   const isW = document.getElementById('f-type').value === 'WELLNESS';
   document.getElementById('wellnessSection').classList.toggle('hidden', !isW);
@@ -1370,6 +1785,7 @@ async function submitBooking() {
   btn.textContent = 'Đang tạo...';
   const body = {
     product, tourDate,
+    productId: document.getElementById('f-productSel').value || null,
     adults:   parseInt(document.getElementById('f-adults').value)||1,
     children: parseInt(document.getElementById('f-children').value)||0,
     customer: { name: cname, phone: cphone, email: document.getElementById('f-cemail').value },
@@ -1392,6 +1808,7 @@ async function submitBooking() {
     document.getElementById('f-amount').value = '0';
     document.getElementById('f-paid').checked = false;
     document.getElementById('f-type').value = 'STANDARD';
+    document.getElementById('f-productSel').value = '';
     document.getElementById('wellnessSection').classList.add('hidden');
     toast('Booking đã được tạo thành công!');
     showDetail(data.booking.bookingId);
