@@ -187,6 +187,13 @@ DELETE /api/products/:id         (CEO only)
 `products.db`: `{ productId (PRD-xxx), name, type, durationDays, defaultPrice (giá bán/khách), description, costSheet: [{category, desc, nccId?, costType: PER_PERSON|PER_GROUP, amount}], active }`.
 Tạo booking với `productId` → server snapshot `costEstimate` = Σ PER_GROUP + Σ PER_PERSON × (adults+children) vào booking (cost sheet đổi sau không ảnh hưởng booking cũ). Detail hiển thị thực chi vs dự toán.
 
+### Reports
+```
+GET /api/reports/post-analysis   ?from=&to= (lọc theo tourDate; CEO/KETOAN/TPDH)
+→ { summary, tours, byProduct, suppliers }
+```
+Chỉ tính tour COMPLETED. Per tour: doanh thu, dự toán (costEstimate), thực chi (Σ expenses), chênh dự toán, lãi/lỗ, margin. byProduct gom theo productId. suppliers xếp hạng theo avgRating (chỉ NCC đã được chấm), <3★ cảnh báo. UI: trang "Post Analysis" + xuất CSV.
+
 ### Suppliers (NCC)
 ```
 GET    /api/suppliers            ?category=&active=true   (mọi role, kèm avgRating)
@@ -317,11 +324,11 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Email digest nhắc việc 07:30 sáng (node-cron + nodemailer, tắt được qua .env)
 - [x] Sản phẩm Tour + Cost Sheet dự toán (CEO/PM quản lý), booking snapshot dự toán chi
 - [x] Quản lý NCC chia sẻ 3 công ty (CEO/TPDH quản lý) + chấm điểm chất lượng 1-5★
+- [x] Báo cáo Post Analysis: lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC, xuất CSV
 
 ## Tính năng chưa có (backlog)
 
 - [ ] Báo cáo doanh thu theo tháng / xuất Excel
-- [ ] Báo cáo Post Analysis tổng hợp: lãi/lỗ per tour, per NCC (dữ liệu costEstimate + expenses đã có sẵn)
 - [ ] Đẩy nhắc việc qua Zalo OA (thay/thêm kênh cho email digest)
 - [ ] Assign NVDH/WC trực tiếp từ UI
 - [ ] Filter nâng cao (theo ngày, theo người phụ trách)

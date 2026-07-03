@@ -121,6 +121,11 @@
           <span>💰</span><span>Doanh thu</span>
         </a>
       </div>
+      <div id="navReports" class="hidden">
+        <a onclick="showPage('post-analysis')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+          <span>📈</span><span>Post Analysis</span>
+        </a>
+      </div>
       <a onclick="showPage('checklist')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>✅</span><span>Checklist</span>
       </a>
@@ -409,6 +414,37 @@
       </div>
     </div>
 
+    <!-- POST ANALYSIS PAGE -->
+    <div id="page-post-analysis" class="page">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h2 class="text-2xl font-bold text-gray-800">📈 Post Analysis — Hiệu quả tour đã chạy</h2>
+        <button onclick="exportPaCSV()" class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600">⬇ Xuất CSV</button>
+      </div>
+      <div class="flex items-center gap-2 mb-6 flex-wrap">
+        <span class="text-sm text-gray-500">Ngày khởi hành từ</span>
+        <input type="date" id="paFrom" class="input" style="width:auto" onchange="loadPostAnalysis()"/>
+        <span class="text-sm text-gray-500">đến</span>
+        <input type="date" id="paTo" class="input" style="width:auto" onchange="loadPostAnalysis()"/>
+        <button onclick="document.getElementById('paFrom').value='';document.getElementById('paTo').value='';loadPostAnalysis()" class="text-xs text-gray-400 hover:text-gray-700 underline">Xoá lọc</button>
+        <span class="text-xs text-gray-400 ml-auto">Chỉ tính tour COMPLETED (đã quyết toán)</span>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6" id="paCards"></div>
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h3 class="font-semibold text-gray-700 mb-4">Lãi / lỗ từng tour</h3>
+        <div id="paTourTable"></div>
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h3 class="font-semibold text-gray-700 mb-4">Hiệu quả theo sản phẩm</h3>
+          <div id="paProductTable"></div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-6">
+          <h3 class="font-semibold text-gray-700 mb-4">Xếp hạng chất lượng NCC</h3>
+          <div id="paSupplierTable"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- CHECKLIST PAGE -->
     <div id="page-checklist" class="page">
       <div class="flex items-center justify-between mb-6">
@@ -681,6 +717,7 @@ function showApp() {
   }
   if (['CEO','PM'].includes(USER.role))   document.getElementById('btnNewProduct').classList.remove('hidden');
   if (['CEO','TPDH'].includes(USER.role)) document.getElementById('btnNewSupplier').classList.remove('hidden');
+  if (['CEO','KETOAN','TPDH'].includes(USER.role)) document.getElementById('navReports').classList.remove('hidden');
   loadStaff();
   loadCatalogCaches();
   showPage('dashboard');
@@ -717,6 +754,7 @@ function showPage(page) {
   if (page === 'users')      loadUsers();
   if (page === 'products')   loadProducts();
   if (page === 'suppliers')  loadSuppliers();
+  if (page === 'post-analysis') loadPostAnalysis();
   if (page === 'new-booking') fillProductSelect();
   if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
@@ -1894,6 +1932,106 @@ function exportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url;
   a.download = `doanh-thu-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Đã xuất file CSV');
+}
+
+// ── Post Analysis ─────────────────────────────────────────
+const fmtVnd = v => Number(v || 0).toLocaleString('vi-VN') + 'đ';
+
+async function loadPostAnalysis() {
+  const from = document.getElementById('paFrom').value;
+  const to   = document.getElementById('paTo').value;
+  const p = new URLSearchParams();
+  if (from) p.set('from', from);
+  if (to)   p.set('to', to);
+  try {
+    const { summary, tours, byProduct, suppliers } = await api(`/reports/post-analysis${p.toString() ? '?' + p : ''}`);
+    window._paTours = tours;
+
+    document.getElementById('paCards').innerHTML = [
+      { label:'Tour đã quyết toán', value: summary.tourCount, color:'bg-blue-900', icon:'🏁' },
+      { label:'Tổng doanh thu', value: fmtVnd(summary.totalRevenue), color:'bg-teal-600', icon:'💰' },
+      { label:'Tổng chi thực tế', value: fmtVnd(summary.totalCost), color:'bg-orange-500', icon:'💸' },
+      { label:`Lãi ròng${summary.avgMargin != null ? ' · margin ' + summary.avgMargin + '%' : ''}`,
+        value: fmtVnd(summary.totalProfit), color: summary.totalProfit >= 0 ? 'bg-green-600' : 'bg-red-600', icon: summary.totalProfit >= 0 ? '📈' : '📉' },
+      { label:'Tour lãi / lỗ / vượt DT', value: `${summary.profitable} / ${summary.losing} / ${summary.overBudget}`, color:'bg-gray-700', icon:'⚖️' },
+    ].map(c => `
+      <div class="${c.color} text-white rounded-xl p-5">
+        <div class="text-2xl mb-1">${c.icon}</div>
+        <div class="text-xl font-bold truncate" title="${c.value}">${c.value}</div>
+        <div class="text-xs opacity-80 mt-1">${c.label}</div>
+      </div>`).join('');
+
+    document.getElementById('paTourTable').innerHTML = !tours.length
+      ? '<p class="text-gray-400 text-sm">Chưa có tour COMPLETED nào trong khoảng thời gian này</p>'
+      : `<div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead class="text-left text-gray-500 border-b text-xs uppercase">
+            <tr><th class="pb-2 pr-3">Mã đơn</th><th class="pb-2 pr-3">Tour</th><th class="pb-2 pr-3">Ngày KH</th><th class="pb-2 pr-3">Khách</th>
+              <th class="pb-2 pr-3 text-right">Doanh thu</th><th class="pb-2 pr-3 text-right">Dự toán</th><th class="pb-2 pr-3 text-right">Thực chi</th>
+              <th class="pb-2 pr-3 text-right">Chênh DT</th><th class="pb-2 pr-3 text-right">Lãi/Lỗ</th><th class="pb-2 text-right">Margin</th></tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+          ${tours.map(t => `
+            <tr class="hover:bg-gray-50">
+              <td class="py-2.5 pr-3 font-mono text-xs"><a onclick="showDetail('${t.bookingId}')" class="text-blue-600 hover:underline cursor-pointer">${t.bookingId}</a></td>
+              <td class="py-2.5 pr-3 max-w-40 truncate">${esc(t.product)}</td>
+              <td class="py-2.5 pr-3 whitespace-nowrap">${t.tourDate}</td>
+              <td class="py-2.5 pr-3">${t.pax}</td>
+              <td class="py-2.5 pr-3 text-right whitespace-nowrap">${fmtVnd(t.revenue)}</td>
+              <td class="py-2.5 pr-3 text-right whitespace-nowrap text-gray-500">${t.estimate != null ? fmtVnd(t.estimate) : '—'}</td>
+              <td class="py-2.5 pr-3 text-right whitespace-nowrap">${fmtVnd(t.actual)}</td>
+              <td class="py-2.5 pr-3 text-right whitespace-nowrap ${t.variance == null ? 'text-gray-300' : t.variance > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}">
+                ${t.variance == null ? '—' : (t.variance > 0 ? '▲ +' : '▼ ') + fmtVnd(Math.abs(t.variance))}</td>
+              <td class="py-2.5 pr-3 text-right whitespace-nowrap font-bold ${t.profit >= 0 ? 'text-green-600' : 'text-red-600'}">${t.profit >= 0 ? '+' : '−'}${fmtVnd(Math.abs(t.profit))}</td>
+              <td class="py-2.5 text-right ${t.margin != null && t.margin < 0 ? 'text-red-600' : 'text-gray-600'}">${t.margin != null ? t.margin + '%' : '—'}</td>
+            </tr>`).join('')}
+          </tbody></table></div>`;
+
+    document.getElementById('paProductTable').innerHTML = !byProduct.length
+      ? '<p class="text-gray-400 text-sm">Chưa có dữ liệu</p>'
+      : `<table class="w-full text-sm">
+          <thead class="text-left text-gray-500 border-b text-xs uppercase">
+            <tr><th class="pb-2 pr-3">Sản phẩm</th><th class="pb-2 pr-3">Tour</th><th class="pb-2 pr-3 text-right">Lãi</th><th class="pb-2 text-right">Margin</th></tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+          ${byProduct.map(g => `
+            <tr class="hover:bg-gray-50">
+              <td class="py-2.5 pr-3 max-w-44 truncate" title="${esc(g.product)}">${esc(g.product)}</td>
+              <td class="py-2.5 pr-3">${g.tourCount} (${g.pax} khách)</td>
+              <td class="py-2.5 pr-3 text-right font-bold whitespace-nowrap ${g.profit >= 0 ? 'text-green-600' : 'text-red-600'}">${g.profit >= 0 ? '+' : '−'}${fmtVnd(Math.abs(g.profit))}</td>
+              <td class="py-2.5 text-right">${g.margin != null ? g.margin + '%' : '—'}</td>
+            </tr>`).join('')}
+          </tbody></table>`;
+
+    document.getElementById('paSupplierTable').innerHTML = !suppliers.length
+      ? '<p class="text-gray-400 text-sm">Chưa có NCC nào được chấm điểm — nhắc NVDH tick PT-05 sau tour</p>'
+      : suppliers.map(s => `
+        <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0 ${s.avgRating < 3 ? 'bg-red-50 -mx-2 px-2 rounded-lg' : ''}">
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${esc(s.name)} ${!s.active ? '<span class="text-xs text-gray-400">(ngừng)</span>' : ''}</p>
+            <p class="text-xs text-gray-400">${EXPENSE_LABELS[s.category] || s.category}${s.lastNote ? ' · "' + esc(s.lastNote) + '"' : ''}</p>
+          </div>
+          <span class="text-yellow-500 font-bold whitespace-nowrap">★ ${s.avgRating}</span>
+          <span class="text-xs text-gray-400">(${s.ratingCount})</span>
+          ${s.avgRating < 3 ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">⚠️ cần xem lại</span>' : ''}
+        </div>`).join('');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function exportPaCSV() {
+  const tours = window._paTours || [];
+  if (!tours.length) return toast('Chưa có dữ liệu để xuất', 'warn');
+  const rows = [
+    ['Mã đơn','Tour','Ngày KH','Khách','Doanh thu','Dự toán chi','Thực chi','Chênh dự toán','Lãi/Lỗ','Margin %'],
+    ...tours.map(t => [t.bookingId, t.product, t.tourDate, t.pax, t.revenue,
+      t.estimate ?? '', t.actual, t.variance ?? '', t.profit, t.margin ?? ''])
+  ];
+  const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `post-analysis-${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
   toast('Đã xuất file CSV');
 }
