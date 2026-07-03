@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
+const { ensureChecklist } = require('../db/tourChecklist');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -81,11 +82,64 @@ router.get('/stats', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/bookings/my-tasks ────────────────────────────
+// Checklist item chưa xong của user đang đăng nhập, gom từ mọi booking đang chạy
+function canSeeTask(user, item, booking) {
+  if (['CEO', 'TPDH'].includes(user.role)) return true;
+  if (item.role !== user.role) return false;
+  if (user.role === 'NVDH') return !booking.assignedTo || booking.assignedTo === user.username;
+  if (user.role === 'WC')   return !booking.wcAssigned || booking.wcAssigned === user.username;
+  return true; // CS, KETOAN: mọi booking
+}
+
+router.get('/my-tasks', requireAuth, async (req, res) => {
+  try {
+    const bookings = await dbAsync.find('bookings',
+      { status: { $nin: ['CANCELLED', 'COMPLETED'] } }, { tourDate: 1 });
+    const today = new Date().toISOString().slice(0, 10);
+    const tasks = [];
+
+    for (const b of bookings) {
+      let checklist = b.checklist;
+      const ensured = ensureChecklist(b); // bổ sung item còn thiếu cho booking cũ
+      if (ensured) {
+        await dbAsync.update('bookings', { bookingId: b.bookingId }, { $set: { checklist: ensured } });
+        checklist = ensured;
+      }
+      for (const item of checklist || []) {
+        if (item.done) continue;
+        if (!canSeeTask(req.user, item, b)) continue;
+        tasks.push({
+          bookingId: b.bookingId, product: b.product, tourDate: b.tourDate,
+          code: item.code, title: item.title, phase: item.phase, role: item.role,
+          deadline: item.deadline,
+          overdue:  !!item.deadline && item.deadline < today,
+          dueToday: item.deadline === today,
+        });
+      }
+    }
+
+    // Quá hạn trước, rồi theo deadline tăng dần; không deadline xuống cuối
+    tasks.sort((a, b) => (b.overdue - a.overdue)
+      || String(a.deadline || '9999').localeCompare(String(b.deadline || '9999')));
+    res.json({
+      tasks,
+      overdue:  tasks.filter(t => t.overdue).length,
+      dueToday: tasks.filter(t => t.dueToday).length,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/bookings/:id ─────────────────────────────────
 router.get('/:id', ...requirePerm('bookings:read'), async (req, res) => {
   try {
     const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const ensured = ensureChecklist(booking);
+    if (ensured) {
+      await dbAsync.update('bookings', { bookingId: booking.bookingId }, { $set: { checklist: ensured } });
+      booking.checklist = ensured;
+    }
     res.json({ booking });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -112,10 +166,13 @@ router.post('/', ...requirePerm('bookings:create'), async (req, res) => {
       payment: { amount: req.body.payment?.amount || 0, paid: req.body.payment?.paid || false },
       source: req.body.source || 'ADMIN',  // ADMIN | CTY2_API | PLATFORM
       notes: [],
+      expenses: [],       // sổ chi phí thực tế
+      dailyReports: [],   // Daily Tour Report
       createdAt: now,
       updatedAt: now,
       createdBy: req.user.username,
     };
+    booking.checklist = ensureChecklist(booking) || [];
 
     const saved = await dbAsync.insert('bookings', booking);
     await dbAsync.insert('activity', { type:'BOOKING_CREATED', bookingId, by: req.user.username, at: now });
@@ -134,13 +191,25 @@ router.patch('/:id/status', ...requirePerm('bookings:update'), async (req, res) 
     const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
 
+    // Điểm chặn duy nhất: không đóng booking khi TPDH chưa duyệt Closing Report
+    if (status === 'COMPLETED') {
+      const pt08 = (booking.checklist || []).find(i => i.code === 'PT-08');
+      if (pt08 && !pt08.done)
+        return res.status(409).json({ error: 'Chưa thể đóng booking: TPDH cần duyệt Tour Closing Report (tick PT-08) trước' });
+    }
+
     const now = new Date().toISOString();
     const histEntry = { status, by: req.user.username, at: now };
     if (note) histEntry.note = note;
 
+    // Sinh thêm giai đoạn checklist tương ứng status mới
+    const setFields = { status, updatedAt: now };
+    const ensured = ensureChecklist({ ...booking, status });
+    if (ensured) setFields.checklist = ensured;
+
     await dbAsync.update('bookings',
       { bookingId: req.params.id },
-      { $set: { status, updatedAt: now }, $push: { statusHistory: histEntry } }
+      { $set: setFields, $push: { statusHistory: histEntry } }
     );
 
     await dbAsync.insert('activity', { type:'STATUS_CHANGED', bookingId: req.params.id,
@@ -172,6 +241,110 @@ router.post('/:id/note', requireAuth, async (req, res) => {
     const entry = { text, by: req.user.username, name: req.user.name, at: new Date().toISOString() };
     await dbAsync.update('bookings', { bookingId: req.params.id }, { $push: { notes: entry } });
     res.json({ message: 'Đã thêm note' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/bookings/:id/checklist/:code ───────────────
+// Tick / untick 1 item checklist tour. CEO/TPDH tick được mọi item, role khác chỉ tick item của role mình
+router.patch('/:id/checklist/:code', requireAuth, async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const checklist = booking.checklist || [];
+    const item = checklist.find(i => i.code === req.params.code);
+    if (!item) return res.status(404).json({ error: `Không tìm thấy item ${req.params.code}` });
+
+    const canTick = ['CEO', 'TPDH'].includes(req.user.role) || item.role === req.user.role;
+    if (!canTick) return res.status(403).json({ error: `Việc này thuộc trách nhiệm role ${item.role}` });
+
+    const now = new Date().toISOString();
+    if (req.body.done !== false) {
+      item.done = true; item.doneBy = req.user.username;
+      item.doneName = req.user.name; item.doneAt = now;
+      if (req.body.note) item.note = req.body.note;
+    } else {
+      item.done = false; item.doneBy = null; item.doneName = null; item.doneAt = null;
+    }
+
+    // NeDB không $set được phần tử trong array — ghi đè cả mảng (quirk #3)
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { checklist, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'CHECKLIST_TICK', bookingId: req.params.id,
+      from: item.done ? null : 'DONE', to: item.code, by: req.user.username, at: now });
+
+    res.json({ message: item.done ? `Đã hoàn thành ${item.code}` : `Đã bỏ tick ${item.code}`, checklist });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/bookings/:id/expenses ───────────────────────
+// Sổ chi phí thực tế — đầu vào cho quyết toán PT-07
+const EXPENSE_CATEGORIES = ['XE', 'KHACHSAN', 'ANUONG', 'VE', 'BAOHIEM', 'YTE', 'KHAC'];
+
+router.post('/:id/expenses', requireAuth, async (req, res) => {
+  try {
+    const { category = 'KHAC', desc, amount, hasReceipt = false } = req.body;
+    if (!desc || !desc.trim()) return res.status(400).json({ error: 'Thiếu mô tả khoản chi' });
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return res.status(400).json({ error: 'Số tiền phải lớn hơn 0' });
+    if (!EXPENSE_CATEGORIES.includes(category))
+      return res.status(400).json({ error: `Loại chi không hợp lệ. Dùng: ${EXPENSE_CATEGORIES.join(', ')}` });
+
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const now = new Date().toISOString();
+    const entry = {
+      expId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      category, desc: desc.trim(), amount: amt, hasReceipt: !!hasReceipt,
+      by: req.user.username, name: req.user.name, at: now,
+    };
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { updatedAt: now }, $push: { expenses: entry } });
+    res.status(201).json({ message: 'Đã ghi khoản chi', expense: entry });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/bookings/:id/expenses/:expId ──────────────
+router.delete('/:id/expenses/:expId', requireAuth, async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const entry = (booking.expenses || []).find(x => x.expId === req.params.expId);
+    if (!entry) return res.status(404).json({ error: 'Không tìm thấy khoản chi' });
+
+    const canDelete = ['CEO', 'TPDH', 'KETOAN'].includes(req.user.role) || entry.by === req.user.username;
+    if (!canDelete) return res.status(403).json({ error: 'Chỉ người ghi hoặc CEO/TPDH/Kế toán được xoá khoản chi' });
+
+    const expenses = booking.expenses.filter(x => x.expId !== req.params.expId);
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { expenses, updatedAt: new Date().toISOString() } });
+    res.json({ message: 'Đã xoá khoản chi' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/bookings/:id/daily-report ───────────────────
+// Daily Tour Report có cấu trúc (OP-03)
+router.post('/:id/daily-report', requireAuth, async (req, res) => {
+  try {
+    const { date, summary, groupStatus = 'OK', incidents = '', supplierRating } = req.body;
+    if (!summary || !summary.trim()) return res.status(400).json({ error: 'Thiếu tóm tắt hành trình trong ngày' });
+    if (!['OK', 'ISSUE'].includes(groupStatus))
+      return res.status(400).json({ error: 'groupStatus phải là OK hoặc ISSUE' });
+
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const now = new Date().toISOString();
+    const report = {
+      date: date || now.slice(0, 10),
+      summary: summary.trim(), groupStatus, incidents: incidents.trim(),
+      supplierRating: supplierRating ? Math.min(5, Math.max(1, Number(supplierRating))) : null,
+      by: req.user.username, name: req.user.name, at: now,
+    };
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { updatedAt: now }, $push: { dailyReports: report } });
+    res.status(201).json({ message: 'Đã nộp Daily Tour Report', report });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -107,11 +107,22 @@ booking-hub/
   },
   source: String,          // WEBSITE|PLATFORM|ADMIN|DIRECT
   notes: [{ text, by, name, at }],
+  checklist: [{            // checklist SOP tour — sinh tự động theo status (src/db/tourChecklist.js)
+    code,                  // BC-xx|PO-xx|OP-xx|PT-xx
+    title, phase,          // BOOKING|PREOPS|OPS|POSTOPS
+    role,                  // role chịu trách nhiệm
+    deadline,              // YYYY-MM-DD hoặc null (trong tour)
+    done, doneBy, doneName, doneAt, note
+  }],
+  expenses: [{ expId, category, desc, amount, hasReceipt, by, name, at }],  // sổ chi thực tế
+  dailyReports: [{ date, summary, groupStatus, incidents, supplierRating, by, name, at }],
   createdAt: ISOString,
   updatedAt: ISOString,
   createdBy: String        // username
 }
 ```
+
+**Checklist tour tự sinh theo vòng đời:** tạo booking → giai đoạn BOOKING; CONFIRMED → +PREOPS; IN_PROGRESS → +OPS+POSTOPS. Booking cũ thiếu checklist được bổ sung lazy khi GET detail / my-tasks. Chuyển COMPLETED bị chặn nếu PT-08 chưa tick.
 
 ### activity.db
 ```javascript
@@ -138,6 +149,11 @@ PATCH  /api/bookings/:id/status  body: {status, note?}
 PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?}
 POST   /api/bookings/:id/note    body: {text}
 GET    /api/bookings/:id/brief   → {brief: string} (text để gửi Zalo/email cho CTY1)
+GET    /api/bookings/my-tasks    → {tasks, overdue, dueToday} — checklist item chưa xong của user hiện tại
+PATCH  /api/bookings/:id/checklist/:code  body: {done, note?} — CEO/TPDH tick mọi item, role khác chỉ item của mình
+POST   /api/bookings/:id/expenses         body: {category, desc, amount, hasReceipt?}
+DELETE /api/bookings/:id/expenses/:expId  — người ghi hoặc CEO/TPDH/KETOAN
+POST   /api/bookings/:id/daily-report     body: {date?, summary, groupStatus, incidents?, supplierRating?}
 ```
 
 ### Users (CEO only)
@@ -261,6 +277,10 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Notes nội bộ per booking
 - [x] Dashboard stats
 - [x] Quản lý User (CEO): tạo, khoá, xoá, đổi pass
+- [x] Checklist SOP điều hành tour per-booking (4 giai đoạn BC/PO/OP/PT, deadline tính từ tourDate, phân role)
+- [x] Khối "Việc của tôi" trên dashboard + badge quá hạn trên sidebar
+- [x] Sổ chi phí thực tế per booking + lãi/lỗ tạm tính
+- [x] Daily Tour Report có cấu trúc (khi IN_PROGRESS)
 
 ## Tính năng chưa có (backlog)
 

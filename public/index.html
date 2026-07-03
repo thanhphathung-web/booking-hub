@@ -97,6 +97,7 @@
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <a onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>📊</span><span>Dashboard</span>
+        <span id="taskBadge" class="hidden ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full" title="Việc quá hạn"></span>
       </a>
       <a onclick="showPage('bookings')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>📋</span><span>Booking List</span>
@@ -161,6 +162,16 @@
         <button id="clearRangeBtn" onclick="clearDateRange()" class="hidden text-xs border border-gray-300 text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-50 transition">✕ Xoá lọc</button>
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8" id="statCards"></div>
+
+      <!-- Việc của tôi -->
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-gray-700">🎯 Việc của tôi</h3>
+          <span id="myTasksSummary" class="text-xs text-gray-400"></span>
+        </div>
+        <div id="myTasksList"></div>
+      </div>
+
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h3 class="font-semibold text-gray-700 mb-4">Booking gần nhất</h3>
         <div id="recentBookings"></div>
@@ -649,6 +660,58 @@ async function loadDashboard(days, from, to) {
           </tr>`).join('')}
           </tbody></table></div>`;
   } catch(e) { console.error(e); }
+  loadMyTasks();
+}
+
+// ── Việc của tôi (checklist tour) ─────────────────────────
+async function loadMyTasks() {
+  try {
+    const { tasks, overdue } = await api('/bookings/my-tasks');
+
+    const badge = document.getElementById('taskBadge');
+    if (overdue > 0) { badge.textContent = overdue; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+
+    const listEl = document.getElementById('myTasksList');
+    const sumEl  = document.getElementById('myTasksSummary');
+    if (!listEl) return;
+    sumEl.textContent = tasks.length
+      ? `${tasks.length} việc chưa xong · ${overdue} quá hạn`
+      : '';
+    if (!tasks.length) {
+      listEl.innerHTML = '<p class="text-gray-400 text-sm">🎉 Không có việc nào cần làm</p>';
+      return;
+    }
+    const MAX_SHOW = 15;
+    listEl.innerHTML = tasks.slice(0, MAX_SHOW).map(t => {
+      const dl = !t.deadline ? '<span class="text-xs text-gray-400">Trong tour</span>'
+        : t.overdue  ? `<span class="text-xs text-red-600 font-bold">⏰ Quá hạn ${t.deadline}</span>`
+        : t.dueToday ? '<span class="text-xs text-orange-600 font-bold">📌 Hôm nay</span>'
+        : `<span class="text-xs text-gray-500">Hạn ${t.deadline}</span>`;
+      return `
+      <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0 ${t.overdue ? 'bg-red-50 -mx-2 px-2 rounded-lg' : ''}">
+        <button onclick="tickTask('${t.bookingId}','${t.code}')" title="Đánh dấu hoàn thành"
+          class="flex-shrink-0 w-5 h-5 rounded-full border-2 border-gray-300 hover:border-green-500 hover:bg-green-50 transition"></button>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-gray-800 truncate">
+            <span class="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1">${t.code}</span>${esc(t.title)}</p>
+          <p class="text-xs text-gray-400 truncate">
+            <a onclick="showDetail('${t.bookingId}')" class="text-blue-600 hover:underline cursor-pointer font-mono">${t.bookingId}</a>
+            · ${esc(t.product)} · KH ${t.tourDate}</p>
+        </div>
+        <span class="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">${t.role}</span>
+        <div class="flex-shrink-0 w-32 text-right">${dl}</div>
+      </div>`;
+    }).join('') + (tasks.length > MAX_SHOW ? `<p class="text-xs text-gray-400 mt-2">…và ${tasks.length - MAX_SHOW} việc khác</p>` : '');
+  } catch(e) { console.error(e); }
+}
+
+async function tickTask(bookingId, code) {
+  try {
+    await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: true }) });
+    toast(`Đã hoàn thành ${code}`);
+    loadMyTasks();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function applyDateRange() {
@@ -940,6 +1003,9 @@ async function showDetail(id) {
             </div>
           </div>
 
+          ${renderTourChecklist(b)}
+          ${renderDailyReports(b)}
+
           <!-- Assign with dropdowns -->
           <div class="bg-white rounded-xl shadow-sm p-6">
             <h4 class="font-semibold text-gray-700 mb-3">Phân công nhân sự</h4>
@@ -1017,6 +1083,8 @@ async function showDetail(id) {
                 class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition">✅ Đánh dấu đã TT</button>` : ''}
             </div>
           </div>
+
+          ${renderExpenses(b)}
         </div>
       </div>`;
 
@@ -1074,6 +1142,192 @@ function copyBrief() {
   navigator.clipboard.writeText(CURRENT_BRIEF)
     .then(() => toast('Đã copy Booking Brief!'))
     .catch(() => toast('Không thể copy — thử thủ công', 'warn'));
+}
+
+// ── Checklist điều hành tour (per-booking) ────────────────
+const TOUR_PHASE_LABELS = {
+  BOOKING: '1️⃣ Booking Control — Xác nhận đơn',
+  PREOPS:  '2️⃣ Pre-Operation — Chuẩn bị trước tour',
+  OPS:     '3️⃣ Operation — Trong tour',
+  POSTOPS: '4️⃣ Post-Operation — Sau tour',
+};
+
+function renderTourChecklist(b) {
+  const cl = b.checklist || [];
+  if (!cl.length) return '';
+  const today = new Date().toISOString().slice(0,10);
+  const done = cl.filter(i => i.done).length;
+  const pct = Math.round(done / cl.length * 100);
+  const canTick = i => ['CEO','TPDH'].includes(USER.role) || i.role === USER.role;
+  const phases = ['BOOKING','PREOPS','OPS','POSTOPS'].filter(p => cl.some(i => i.phase === p));
+
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="font-semibold text-gray-700">✅ Checklist điều hành tour</h4>
+        <span class="text-sm font-bold ${pct===100 ? 'text-green-600' : 'text-blue-900'}">${done}/${cl.length} (${pct}%)</span>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
+        <div class="h-2 rounded-full transition-all ${pct===100 ? 'bg-green-500' : 'bg-blue-900'}" style="width:${pct}%"></div>
+      </div>
+      ${phases.map(p => `
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mt-4 mb-1.5">${TOUR_PHASE_LABELS[p]}</p>
+        ${cl.filter(i => i.phase === p).map(i => {
+          const overdue = !i.done && i.deadline && i.deadline < today;
+          const tick = canTick(i);
+          return `
+          <div class="flex items-start gap-2.5 py-1.5 ${overdue ? 'bg-red-50 -mx-2 px-2 rounded-lg' : ''}">
+            <button ${tick ? `onclick="tickDetailItem('${b.bookingId}','${i.code}',${i.done})"` : 'disabled'}
+              title="${tick ? (i.done ? 'Bỏ tick' : 'Đánh dấu hoàn thành') : 'Việc của role '+i.role}"
+              class="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center text-xs font-bold transition
+                ${i.done ? 'bg-green-500 border-green-500 text-white' : tick ? 'border-gray-300 hover:border-green-500 hover:bg-green-50' : 'border-gray-200 opacity-40 cursor-not-allowed'}">
+              ${i.done ? '✓' : ''}</button>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm ${i.done ? 'line-through text-gray-400' : 'text-gray-800'}">
+                <span class="font-mono text-xs text-gray-400 mr-1">${i.code}</span>${esc(i.title)}</p>
+              <p class="text-xs ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}">
+                ${i.role} · ${i.done
+                  ? `✔ ${esc(i.doneName || i.doneBy)} · ${new Date(i.doneAt).toLocaleString('vi-VN')}`
+                  : (i.deadline ? 'Hạn ' + i.deadline : 'Trong tour')}${overdue ? ' · ⏰ QUÁ HẠN' : ''}</p>
+            </div>
+          </div>`;
+        }).join('')}`).join('')}
+    </div>`;
+}
+
+async function tickDetailItem(bookingId, code, isDone) {
+  try {
+    await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: !isDone }) });
+    showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Daily Tour Report ─────────────────────────────────────
+function renderDailyReports(b) {
+  const reports = b.dailyReports || [];
+  if (!['IN_PROGRESS','COMPLETED'].includes(b.status) && !reports.length) return '';
+  const today = new Date().toISOString().slice(0,10);
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <h4 class="font-semibold text-gray-700 mb-3">📝 Daily Tour Report</h4>
+      <div class="space-y-2 mb-4 max-h-60 overflow-y-auto pr-1">
+        ${!reports.length ? '<p class="text-gray-400 text-sm">Chưa có báo cáo ngày nào</p>'
+          : [...reports].reverse().map(r => `
+          <div class="bg-gray-50 rounded-lg p-3 text-sm border ${r.groupStatus==='ISSUE' ? 'border-orange-200' : 'border-gray-100'}">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <strong>${r.date}</strong>
+              ${r.groupStatus==='ISSUE' ? '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">⚠️ Có vấn đề</span>' : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✅ Đoàn OK</span>'}
+              ${r.supplierRating ? `<span class="text-xs text-yellow-600">${'★'.repeat(r.supplierRating)}${'☆'.repeat(5-r.supplierRating)} NCC</span>` : ''}
+            </div>
+            <p class="text-gray-800">${esc(r.summary)}</p>
+            ${r.incidents ? `<p class="text-orange-700 text-xs mt-1">🚨 Sự cố: ${esc(r.incidents)}</p>` : ''}
+            <p class="text-xs text-gray-400 mt-1">${esc(r.name)} · ${new Date(r.at).toLocaleString('vi-VN')}</p>
+          </div>`).join('')}
+      </div>
+      ${b.status === 'IN_PROGRESS' ? `
+      <div class="border-t pt-3 grid grid-cols-2 gap-2">
+        <input id="dr-date" type="date" value="${today}" class="input text-sm"/>
+        <select id="dr-status" class="input text-sm">
+          <option value="OK">✅ Đoàn OK</option>
+          <option value="ISSUE">⚠️ Có vấn đề</option>
+        </select>
+        <textarea id="dr-summary" class="input text-sm col-span-2 h-16" placeholder="Tóm tắt hành trình trong ngày *"></textarea>
+        <input id="dr-incidents" class="input text-sm col-span-2" placeholder="Sự cố (nếu có): giờ, mô tả, cách xử lý"/>
+        <select id="dr-rating" class="input text-sm">
+          <option value="">Đánh giá NCC trong ngày</option>
+          <option value="5">★★★★★ Xuất sắc</option>
+          <option value="4">★★★★ Tốt</option>
+          <option value="3">★★★ Bình thường</option>
+          <option value="2">★★ Kém</option>
+          <option value="1">★ Rất kém</option>
+        </select>
+        <button onclick="submitDailyReport('${b.bookingId}')"
+          class="bg-blue-900 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 transition">Nộp báo cáo</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function submitDailyReport(bookingId) {
+  const summary = document.getElementById('dr-summary').value.trim();
+  if (!summary) return toast('Vui lòng nhập tóm tắt hành trình', 'warn');
+  try {
+    await api(`/bookings/${bookingId}/daily-report`, { method:'POST', body: JSON.stringify({
+      date: document.getElementById('dr-date').value,
+      summary,
+      groupStatus: document.getElementById('dr-status').value,
+      incidents: document.getElementById('dr-incidents').value,
+      supplierRating: document.getElementById('dr-rating').value || null,
+    })});
+    toast('Đã nộp Daily Tour Report');
+    showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Sổ chi phí thực tế ────────────────────────────────────
+const EXPENSE_LABELS = { XE:'🚌 Xe', KHACHSAN:'🏨 Khách sạn', ANUONG:'🍜 Ăn uống', VE:'🎫 Vé/DV', BAOHIEM:'🛡️ Bảo hiểm', YTE:'🏥 Y tế', KHAC:'📦 Khác' };
+
+function renderExpenses(b) {
+  const ex = b.expenses || [];
+  const total = ex.reduce((s, e) => s + (e.amount || 0), 0);
+  const profit = (b.payment.amount || 0) - total;
+  const canDelete = e => ['CEO','TPDH','KETOAN'].includes(USER.role) || e.by === USER.username;
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <h4 class="font-semibold text-gray-700 mb-3">💸 Sổ chi phí thực tế</h4>
+      <div class="space-y-1.5 mb-3 max-h-52 overflow-y-auto pr-1">
+        ${!ex.length ? '<p class="text-gray-400 text-sm">Chưa có khoản chi nào</p>'
+          : ex.map(e => `
+          <div class="flex items-center gap-2 text-sm py-1 border-b border-gray-50 last:border-0">
+            <span class="text-xs flex-shrink-0">${EXPENSE_LABELS[e.category] || e.category}</span>
+            <span class="flex-1 truncate text-gray-700" title="${esc(e.desc)}">${esc(e.desc)}${e.hasReceipt ? ' 🧾' : ''}</span>
+            <span class="font-semibold whitespace-nowrap">${Number(e.amount).toLocaleString('vi-VN')}đ</span>
+            ${canDelete(e) ? `<button onclick="delExpense('${b.bookingId}','${e.expId}')" class="text-red-400 hover:text-red-600 text-xs flex-shrink-0" title="Xoá">✕</button>` : ''}
+          </div>`).join('')}
+      </div>
+      <div class="border-t pt-2 space-y-1 text-sm">
+        <div class="flex justify-between"><span class="text-gray-500">Doanh thu</span><strong>${Number(b.payment.amount||0).toLocaleString('vi-VN')}đ</strong></div>
+        <div class="flex justify-between"><span class="text-gray-500">Tổng chi</span><strong class="text-red-600">−${total.toLocaleString('vi-VN')}đ</strong></div>
+        <div class="flex justify-between"><span class="text-gray-500">Lãi / lỗ tạm tính</span>
+          <strong class="${profit >= 0 ? 'text-green-600' : 'text-red-600'}">${profit >= 0 ? '+' : ''}${profit.toLocaleString('vi-VN')}đ</strong></div>
+      </div>
+      <div class="border-t mt-3 pt-3 grid grid-cols-2 gap-2">
+        <select id="ex-cat" class="input text-sm col-span-2">
+          ${Object.entries(EXPENSE_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}
+        </select>
+        <input id="ex-desc" class="input text-sm col-span-2" placeholder="Mô tả khoản chi *"/>
+        <input id="ex-amount" type="number" min="0" class="input text-sm" placeholder="Số tiền (VNĐ) *"/>
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <input id="ex-receipt" type="checkbox" class="w-4 h-4"/> Có hoá đơn
+        </label>
+        <button onclick="addExpense('${b.bookingId}')"
+          class="col-span-2 bg-teal-700 text-white py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 transition">+ Ghi khoản chi</button>
+      </div>
+    </div>`;
+}
+
+async function addExpense(bookingId) {
+  const desc = document.getElementById('ex-desc').value.trim();
+  const amount = parseInt(document.getElementById('ex-amount').value);
+  if (!desc) return toast('Vui lòng nhập mô tả khoản chi', 'warn');
+  if (!amount || amount <= 0) return toast('Số tiền phải lớn hơn 0', 'warn');
+  try {
+    await api(`/bookings/${bookingId}/expenses`, { method:'POST', body: JSON.stringify({
+      category: document.getElementById('ex-cat').value,
+      desc, amount,
+      hasReceipt: document.getElementById('ex-receipt').checked,
+    })});
+    toast('Đã ghi khoản chi');
+    showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function delExpense(bookingId, expId) {
+  if (!confirm('Xoá khoản chi này?')) return;
+  try {
+    await api(`/bookings/${bookingId}/expenses/${expId}`, { method:'DELETE' });
+    toast('Đã xoá khoản chi', 'warn');
+    showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── New Booking form ──────────────────────────────────────
