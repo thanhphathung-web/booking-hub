@@ -73,6 +73,7 @@ booking-hub/
   role: String,         // CEO|TPDH|NVDH|CS|PM|WC|KETOAN
   name: String,         // display name
   company: String,      // ALL|CTY1|CTY2|CTY3
+  email: String,        // nhận email digest nhắc việc (rỗng = không nhận)
   active: Boolean,      // default true
   createdAt: ISOString
 }
@@ -161,9 +162,18 @@ POST   /api/bookings/:id/daily-report     body: {date?, summary, groupStatus, in
 GET    /api/users
 POST   /api/users                body: {username, password, role, name, company}
 PATCH  /api/users/:username/password  body: {newPassword}
+PATCH  /api/users/:username/email     body: {email} — CEO hoặc chính chủ
 PATCH  /api/users/:username/toggle    → khoá/mở khoá
 DELETE /api/users/:username
 ```
+
+### Digest (CEO only)
+```
+GET    /api/digest/preview   → xem nội dung digest sẽ gửi (không gửi thật)
+POST   /api/digest/send      → gửi digest ngay để test, không đợi cron
+```
+
+**Email digest:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 email tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua `src/services/mailer.js` (nodemailer). SMTP cấu hình trong .env — bỏ trống = tắt gửi, app vẫn chạy. `composeDigest` tách khỏi kênh gửi để sau này đẩy thêm Zalo OA.
 
 ---
 
@@ -281,12 +291,14 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Khối "Việc của tôi" trên dashboard + badge quá hạn trên sidebar
 - [x] Sổ chi phí thực tế per booking + lãi/lỗ tạm tính
 - [x] Daily Tour Report có cấu trúc (khi IN_PROGRESS)
+- [x] Email digest nhắc việc 07:30 sáng (node-cron + nodemailer, tắt được qua .env)
 
 ## Tính năng chưa có (backlog)
 
 - [ ] Báo cáo doanh thu theo tháng / xuất Excel
-- [ ] Quản lý NCC (nhà cung cấp) — chia sẻ 3 công ty
-- [ ] Notification / reminder tour sắp khởi hành
+- [ ] Quản lý NCC (nhà cung cấp) — chia sẻ 3 công ty + Tour Cost Sheet (Pre-Sales)
+- [ ] Báo cáo Post Analysis: dự toán vs chi thực tế (cần NCC module trước)
+- [ ] Đẩy nhắc việc qua Zalo OA (thay/thêm kênh cho email digest)
 - [ ] Assign NVDH/WC trực tiếp từ UI
 - [ ] Filter nâng cao (theo ngày, theo người phụ trách)
 - [ ] API webhook cho website CTY2

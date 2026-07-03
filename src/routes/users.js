@@ -24,14 +24,16 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/users (CEO only)
 router.post('/', requireAuth, async (req, res) => {
   if (req.user.role !== 'CEO') return res.status(403).json({ error: 'CEO only' });
-  const { username, password, role, name, company } = req.body;
+  const { username, password, role, name, company, email } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: 'Thiếu thông tin' });
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email không hợp lệ' });
   const exists = await dbAsync.findOne('users', { username: username.toLowerCase() });
   if (exists) return res.status(400).json({ error: 'Username đã tồn tại' });
   const hash = await bcrypt.hash(password, 10);
   const user = await dbAsync.insert('users', {
     username: username.toLowerCase(), password: hash,
     role, name: name || username, company: company || 'ALL',
+    email: email || '',   // dùng cho email digest nhắc việc
     active: true, createdAt: new Date().toISOString()
   });
   res.status(201).json({ user: { ...user, password: undefined } });
@@ -47,6 +49,18 @@ router.patch('/:username/password', requireAuth, async (req, res) => {
   const hash = await bcrypt.hash(newPassword, 10);
   await dbAsync.update('users', { username: req.params.username }, { $set: { password: hash } });
   res.json({ message: 'Đã đổi mật khẩu' });
+});
+
+// PATCH /api/users/:username/email — CEO đổi cho bất kỳ ai, user tự đổi của mình
+router.patch('/:username/email', requireAuth, async (req, res) => {
+  if (req.user.role !== 'CEO' && req.user.username !== req.params.username)
+    return res.status(403).json({ error: 'Không có quyền' });
+  const email = (req.body.email || '').trim();
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email không hợp lệ' });
+  const user = await dbAsync.findOne('users', { username: req.params.username });
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
+  await dbAsync.update('users', { username: req.params.username }, { $set: { email } });
+  res.json({ message: email ? `Đã cập nhật email → ${email}` : 'Đã xoá email' });
 });
 
 module.exports = router;

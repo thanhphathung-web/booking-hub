@@ -433,6 +433,7 @@
       <div><label class="label">Username *</label><input id="nu-username" class="input" placeholder="vd: nvdh2"/></div>
       <div><label class="label">Mật khẩu *</label><input id="nu-password" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/></div>
       <div><label class="label">Họ tên hiển thị *</label><input id="nu-name" class="input" placeholder="vd: Nguyễn Văn B"/></div>
+      <div><label class="label">Email (nhận nhắc việc buổi sáng)</label><input id="nu-email" type="email" class="input" placeholder="email@example.com"/></div>
       <div><label class="label">Role *</label>
         <select id="nu-role" class="input">
           <option>CEO</option><option>TPDH</option><option>NVDH</option>
@@ -449,6 +450,20 @@
     <div class="mt-5 flex gap-3">
       <button onclick="submitCreateUser()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Tạo</button>
       <button onclick="closeModal('modalCreateUser')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalChangeEmail" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <h3 class="text-lg font-bold mb-1">Cập nhật email</h3>
+    <p class="text-xs text-gray-400 mb-4">Email nhận nhắc việc tự động lúc 07:30 sáng. Để trống = không nhận.</p>
+    <input id="ce-username" type="hidden"/>
+    <div><label class="label">Email</label><input id="ce-email" type="email" class="input" placeholder="email@example.com"/></div>
+    <div id="changeEmailError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitChangeEmail()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalChangeEmail')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
     </div>
   </div>
 </div>
@@ -1505,7 +1520,10 @@ async function loadUsers() {
           ${users.map(u => `
           <tr class="hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}">
             <td class="px-4 py-3 font-mono font-semibold">${esc(u.username)}</td>
-            <td class="px-4 py-3">${esc(u.name)}</td>
+            <td class="px-4 py-3">
+              <div>${esc(u.name)}</div>
+              <div class="text-xs text-gray-400">${u.email ? '✉️ ' + esc(u.email) : '<span class="text-gray-300">chưa có email</span>'}</div>
+            </td>
             <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full font-semibold ${roleColors[u.role]||'bg-gray-100 text-gray-700'}">${esc(u.role)}</span></td>
             <td class="px-4 py-3 text-gray-500">${esc(u.company)}</td>
             <td class="px-4 py-3">
@@ -1515,6 +1533,8 @@ async function loadUsers() {
               <div class="flex gap-2 flex-wrap">
                 <button data-u="${esc(u.username)}" onclick="openChangePass(this.dataset.u)"
                   class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">🔑 Đổi pass</button>
+                <button data-u="${esc(u.username)}" data-e="${esc(u.email||'')}" onclick="openChangeEmail(this.dataset.u, this.dataset.e)"
+                  class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✉️ Email</button>
                 <button data-u="${esc(u.username)}" onclick="toggleUser(this.dataset.u)"
                   class="text-xs border px-2 py-1 rounded ${u.active !== false ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">
                   ${u.active !== false ? '🔒 Khoá' : '🔓 Mở'}
@@ -1530,7 +1550,7 @@ async function loadUsers() {
 }
 
 function openCreateUser() {
-  ['nu-username','nu-password','nu-name'].forEach(id => document.getElementById(id).value = '');
+  ['nu-username','nu-password','nu-name','nu-email'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('createUserError').classList.add('hidden');
   document.getElementById('modalCreateUser').classList.remove('hidden');
 }
@@ -1539,6 +1559,7 @@ async function submitCreateUser() {
   const username = document.getElementById('nu-username').value.trim();
   const password = document.getElementById('nu-password').value;
   const name     = document.getElementById('nu-name').value.trim();
+  const email    = document.getElementById('nu-email').value.trim();
   const role     = document.getElementById('nu-role').value;
   const company  = document.getElementById('nu-company').value;
   const errEl    = document.getElementById('createUserError');
@@ -1549,11 +1570,30 @@ async function submitCreateUser() {
     errEl.textContent = 'Mật khẩu tối thiểu 6 ký tự'; errEl.classList.remove('hidden'); return;
   }
   try {
-    await api('/users', { method:'POST', body: JSON.stringify({username,password,name,role,company}) });
+    await api('/users', { method:'POST', body: JSON.stringify({username,password,name,role,company,email}) });
     closeModal('modalCreateUser');
     toast(`Đã tạo user ${username}`);
     loadUsers();
     loadStaff();  // refresh staff cache
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+function openChangeEmail(username, currentEmail) {
+  document.getElementById('ce-username').value = username;
+  document.getElementById('ce-email').value = currentEmail || '';
+  document.getElementById('changeEmailError').classList.add('hidden');
+  document.getElementById('modalChangeEmail').classList.remove('hidden');
+}
+
+async function submitChangeEmail() {
+  const username = document.getElementById('ce-username').value;
+  const email    = document.getElementById('ce-email').value.trim();
+  const errEl    = document.getElementById('changeEmailError');
+  try {
+    const res = await api(`/users/${username}/email`, { method:'PATCH', body: JSON.stringify({email}) });
+    closeModal('modalChangeEmail');
+    toast(res.message);
+    loadUsers();
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 

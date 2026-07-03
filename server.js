@@ -24,6 +24,7 @@ app.use('/api/auth',     require('./src/routes/auth'));
 app.use('/api/bookings', require('./src/routes/bookings'));
 app.use('/api/users',      require('./src/routes/users'));
 app.use('/api/checklists', require('./src/routes/checklists'));
+app.use('/api/digest',     require('./src/routes/digest'));
 
 // Health check
 app.get('/api/health', (req, res) =>
@@ -32,6 +33,17 @@ app.get('/api/health', (req, res) =>
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ── Email digest nhắc việc 07:30 sáng (giờ VN) ───────────
+const cron = require('node-cron');
+const { sendDailyDigest } = require('./src/services/digest');
+cron.schedule('30 7 * * *', async () => {
+  console.log('[digest] Gửi email nhắc việc buổi sáng...');
+  try {
+    const results = await sendDailyDigest();
+    console.log('[digest]', JSON.stringify(results));
+  } catch (e) { console.error('[digest] Lỗi:', e.message); }
+}, { timezone: 'Asia/Ho_Chi_Minh' });
 
 // ── Start ─────────────────────────────────────────────────
 app.listen(PORT, async () => {

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { ensureChecklist } = require('../db/tourChecklist');
+const { getRunningBookings, tasksFor } = require('../services/tasks');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -84,44 +85,11 @@ router.get('/stats', requireAuth, async (req, res) => {
 
 // ── GET /api/bookings/my-tasks ────────────────────────────
 // Checklist item chưa xong của user đang đăng nhập, gom từ mọi booking đang chạy
-function canSeeTask(user, item, booking) {
-  if (['CEO', 'TPDH'].includes(user.role)) return true;
-  if (item.role !== user.role) return false;
-  if (user.role === 'NVDH') return !booking.assignedTo || booking.assignedTo === user.username;
-  if (user.role === 'WC')   return !booking.wcAssigned || booking.wcAssigned === user.username;
-  return true; // CS, KETOAN: mọi booking
-}
-
 router.get('/my-tasks', requireAuth, async (req, res) => {
   try {
-    const bookings = await dbAsync.find('bookings',
-      { status: { $nin: ['CANCELLED', 'COMPLETED'] } }, { tourDate: 1 });
+    const bookings = await getRunningBookings();
     const today = new Date().toISOString().slice(0, 10);
-    const tasks = [];
-
-    for (const b of bookings) {
-      let checklist = b.checklist;
-      const ensured = ensureChecklist(b); // bổ sung item còn thiếu cho booking cũ
-      if (ensured) {
-        await dbAsync.update('bookings', { bookingId: b.bookingId }, { $set: { checklist: ensured } });
-        checklist = ensured;
-      }
-      for (const item of checklist || []) {
-        if (item.done) continue;
-        if (!canSeeTask(req.user, item, b)) continue;
-        tasks.push({
-          bookingId: b.bookingId, product: b.product, tourDate: b.tourDate,
-          code: item.code, title: item.title, phase: item.phase, role: item.role,
-          deadline: item.deadline,
-          overdue:  !!item.deadline && item.deadline < today,
-          dueToday: item.deadline === today,
-        });
-      }
-    }
-
-    // Quá hạn trước, rồi theo deadline tăng dần; không deadline xuống cuối
-    tasks.sort((a, b) => (b.overdue - a.overdue)
-      || String(a.deadline || '9999').localeCompare(String(b.deadline || '9999')));
+    const tasks = tasksFor(req.user, bookings, today);
     res.json({
       tasks,
       overdue:  tasks.filter(t => t.overdue).length,
