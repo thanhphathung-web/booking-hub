@@ -90,4 +90,22 @@ function ensureChecklist(booking) {
   return [...existing, ...missing];
 }
 
-module.exports = { ensureChecklist, PHASE_LABELS };
+// Tính lại deadline khi tourDate đổi — chỉ item chưa done (item done giữ nguyên làm lịch sử)
+// Trả về mảng checklist mới nếu có thay đổi, null nếu không
+function recomputeDeadlines(booking) {
+  if (!booking.checklist || !booking.checklist.length) return null;
+  const byCode = Object.fromEntries(TEMPLATE.map(t => [t.code, t]));
+  let changed = false;
+  const checklist = booking.checklist.map(item => {
+    const t = byCode[item.code];
+    if (!t || item.done || t.offsetDays === null) return item;
+    const base = t.offsetFrom === 'created' ? (booking.createdAt || '').slice(0, 10) : booking.tourDate;
+    const deadline = addDays(base, t.offsetDays);
+    if (deadline === item.deadline) return item;
+    changed = true;
+    return { ...item, deadline };
+  });
+  return changed ? checklist : null;
+}
+
+module.exports = { ensureChecklist, recomputeDeadlines, PHASE_LABELS };

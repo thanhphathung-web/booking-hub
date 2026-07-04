@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
-const { ensureChecklist } = require('../db/tourChecklist');
+const { ensureChecklist, recomputeDeadlines } = require('../db/tourChecklist');
 const { getRunningBookings, tasksFor } = require('../services/tasks');
 const { createBooking } = require('../services/createBooking');
 
@@ -113,6 +113,79 @@ router.post('/', ...requirePerm('bookings:create'), async (req, res) => {
     const saved = await createBooking(req.body, req.user.username);
     res.status(201).json({ booking: saved, message: 'Booking đã được tạo' });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/bookings/:id ───────────────────────────────
+// Sửa thông tin booking (khách đổi ngày, sai SĐT...). Đổi tourDate → tính lại deadline checklist chưa done
+router.patch('/:id', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['COMPLETED', 'CANCELLED'].includes(booking.status))
+      return res.status(409).json({ error: `Booking đã ${booking.status} — không sửa được nữa` });
+
+    const upd = {};
+    if (req.body.product) upd.product = String(req.body.product).trim();
+    if (req.body.tourDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.tourDate))
+        return res.status(400).json({ error: 'tourDate phải dạng YYYY-MM-DD' });
+      upd.tourDate = req.body.tourDate;
+    }
+    if (req.body.adults   !== undefined) upd.adults   = Math.max(1, parseInt(req.body.adults) || 1);
+    if (req.body.children !== undefined) upd.children = Math.max(0, parseInt(req.body.children) || 0);
+    if (req.body.specialReqs !== undefined) upd.specialReqs = String(req.body.specialReqs).trim();
+    if (req.body.customer) {
+      upd.customer = { ...booking.customer };
+      for (const f of ['name', 'phone', 'email']) {
+        if (req.body.customer[f] !== undefined) upd.customer[f] = String(req.body.customer[f]).trim();
+      }
+      if (!upd.customer.name || !upd.customer.phone)
+        return res.status(400).json({ error: 'Tên và SĐT khách không được trống' });
+    }
+    if (req.body.wellness && booking.type === 'WELLNESS')
+      upd.wellness = { ...booking.wellness, ...req.body.wellness };
+    if (Object.keys(upd).length === 0) return res.status(400).json({ error: 'Không có gì để cập nhật' });
+
+    // Đổi ngày khởi hành → deadline checklist chưa done phải chạy theo
+    if (upd.tourDate && upd.tourDate !== booking.tourDate) {
+      const recomputed = recomputeDeadlines({ ...booking, tourDate: upd.tourDate });
+      if (recomputed) upd.checklist = recomputed;
+    }
+
+    const now = new Date().toISOString();
+    upd.updatedAt = now;
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: upd });
+    await dbAsync.insert('activity', { type: 'BOOKING_UPDATED', bookingId: req.params.id,
+      to: Object.keys(upd).filter(k => k !== 'updatedAt' && k !== 'checklist').join(','),
+      by: req.user.username, at: now });
+
+    const updated = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    res.json({ booking: updated, message: 'Đã cập nhật booking' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/bookings/:id/payment ───────────────────────
+// Cập nhật thanh toán — chỉ CEO/Kế toán (finance:payment)
+router.patch('/:id/payment', ...requirePerm('finance:payment'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const payment = { ...booking.payment };
+    if (req.body.amount !== undefined) {
+      const amt = Number(req.body.amount);
+      if (isNaN(amt) || amt < 0) return res.status(400).json({ error: 'Số tiền không hợp lệ' });
+      payment.amount = amt;
+    }
+    if (req.body.paid !== undefined) payment.paid = !!req.body.paid;
+
+    const now = new Date().toISOString();
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { payment, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'PAYMENT_UPDATED', bookingId: req.params.id,
+      to: `${payment.amount}|${payment.paid ? 'paid' : 'unpaid'}`, by: req.user.username, at: now });
+    res.json({ payment, message: payment.paid ? 'Đã đánh dấu thanh toán đủ' : 'Đã cập nhật thanh toán' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── PATCH /api/bookings/:id/status ───────────────────────

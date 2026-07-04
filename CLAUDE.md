@@ -147,6 +147,9 @@ GET    /api/bookings             query: ?status=&type=&search=
 GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness}
 GET    /api/bookings/:id
 POST   /api/bookings             body: booking object
+PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs/wellness (bookings:update;
+                                 chặn khi COMPLETED/CANCELLED; đổi tourDate tự tính lại deadline checklist chưa done)
+PATCH  /api/bookings/:id/payment body: {amount?, paid?} — finance:payment (CEO/KETOAN)
 PATCH  /api/bookings/:id/status  body: {status, note?}
 PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?}
 POST   /api/bookings/:id/note    body: {text}

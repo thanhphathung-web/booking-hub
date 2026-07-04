@@ -577,6 +577,35 @@
   </div>
 </div>
 
+<div id="modalEditBooking" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg my-8">
+    <h3 class="text-lg font-bold mb-1">✏️ Sửa thông tin booking</h3>
+    <p id="eb-id" class="text-xs text-gray-400 font-mono mb-4"></p>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="col-span-2"><label class="label">Tên tour *</label><input id="eb-product" class="input"/></div>
+      <div><label class="label">Ngày khởi hành *</label><input id="eb-date" type="date" class="input"/></div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><label class="label">NL</label><input id="eb-adults" type="number" min="1" class="input"/></div>
+        <div><label class="label">TE</label><input id="eb-children" type="number" min="0" class="input"/></div>
+      </div>
+      <div><label class="label">Tên khách *</label><input id="eb-cname" class="input"/></div>
+      <div><label class="label">SĐT *</label><input id="eb-cphone" class="input"/></div>
+      <div class="col-span-2"><label class="label">Email</label><input id="eb-cemail" type="email" class="input"/></div>
+      <div class="col-span-2"><label class="label">Yêu cầu đặc biệt</label><textarea id="eb-special" class="input h-16"></textarea></div>
+      <div id="eb-wellness" class="col-span-2 hidden grid grid-cols-2 gap-3">
+        <div><label class="label">Gói khám</label><input id="eb-wpkg" class="input"/></div>
+        <div><label class="label">NCC Y tế</label><input id="eb-wncc" class="input"/></div>
+      </div>
+    </div>
+    <p class="text-xs text-gray-400 mt-3">💡 Đổi ngày khởi hành sẽ tự tính lại deadline các việc chưa hoàn thành trong checklist.</p>
+    <div id="editBookingError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitEditBooking()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu thay đổi</button>
+      <button onclick="closeModal('modalEditBooking')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalZaloFollowers" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
     <h3 class="text-lg font-bold mb-1">💬 Follower của Zalo OA</h3>
@@ -1131,6 +1160,7 @@ async function showDetail(id) {
       api(`/bookings/${id}/brief`)
     ]);
     CURRENT_BRIEF = brief;
+    window._curBooking = b;
 
     const nvdhList = STAFF_LIST.filter(s => ['NVDH','TPDH'].includes(s.role));
     const wcList   = STAFF_LIST.filter(s => s.role === 'WC');
@@ -1160,6 +1190,8 @@ async function showDetail(id) {
               <div class="flex items-center gap-2 flex-wrap">
                 ${b.type==='WELLNESS' ? '<span class="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">WELLNESS</span>' : ''}
                 ${statusBadge(b.status)}
+                ${['CEO','TPDH','NVDH'].includes(USER.role) && !['COMPLETED','CANCELLED'].includes(b.status)
+                  ? `<button onclick="openEditBooking()" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">✏️ Sửa</button>` : ''}
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3 text-sm">
@@ -1275,7 +1307,7 @@ async function showDetail(id) {
             <h4 class="font-semibold text-gray-700 mb-3">Thanh toán</h4>
             <div class="flex items-center justify-between">
               <span class="text-sm ${b.payment.paid ? 'text-green-600 font-semibold' : 'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : '⚠️ Chưa thanh toán: '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</span>
-              ${!b.payment.paid ? `<button data-id="${b.bookingId}" onclick="markPaid(this.dataset.id)"
+              ${!b.payment.paid && ['CEO','KETOAN'].includes(USER.role) ? `<button data-id="${b.bookingId}" onclick="markPaid(this.dataset.id)"
                 class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition">✅ Đánh dấu đã TT</button>` : ''}
             </div>
           </div>
@@ -1292,6 +1324,61 @@ async function showDetail(id) {
   } catch(e) {
     document.getElementById('detailContent').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-sm">${esc(e.message)}</div>`;
   }
+}
+
+function openEditBooking() {
+  const b = window._curBooking;
+  if (!b) return;
+  document.getElementById('eb-id').textContent = b.bookingId;
+  document.getElementById('eb-product').value = b.product;
+  document.getElementById('eb-date').value = b.tourDate;
+  document.getElementById('eb-adults').value = b.adults;
+  document.getElementById('eb-children').value = b.children;
+  document.getElementById('eb-cname').value = b.customer.name;
+  document.getElementById('eb-cphone').value = b.customer.phone;
+  document.getElementById('eb-cemail').value = b.customer.email || '';
+  document.getElementById('eb-special').value = b.specialReqs || '';
+  const isW = b.type === 'WELLNESS';
+  document.getElementById('eb-wellness').classList.toggle('hidden', !isW);
+  if (isW) {
+    document.getElementById('eb-wpkg').value = b.wellness?.package || '';
+    document.getElementById('eb-wncc').value = b.wellness?.ncc || '';
+  }
+  document.getElementById('editBookingError').classList.add('hidden');
+  document.getElementById('modalEditBooking').classList.remove('hidden');
+}
+
+async function submitEditBooking() {
+  const b = window._curBooking;
+  const errEl = document.getElementById('editBookingError');
+  const body = {
+    product: document.getElementById('eb-product').value.trim(),
+    tourDate: document.getElementById('eb-date').value,
+    adults: parseInt(document.getElementById('eb-adults').value) || 1,
+    children: parseInt(document.getElementById('eb-children').value) || 0,
+    customer: {
+      name:  document.getElementById('eb-cname').value.trim(),
+      phone: document.getElementById('eb-cphone').value.trim(),
+      email: document.getElementById('eb-cemail').value.trim(),
+    },
+    specialReqs: document.getElementById('eb-special').value,
+  };
+  if (b.type === 'WELLNESS') {
+    body.wellness = {
+      package: document.getElementById('eb-wpkg').value.trim(),
+      ncc: document.getElementById('eb-wncc').value.trim(),
+    };
+  }
+  if (!body.product || !body.tourDate || !body.customer.name || !body.customer.phone) {
+    errEl.textContent = 'Tên tour, ngày khởi hành, tên khách và SĐT không được trống';
+    errEl.classList.remove('hidden'); return;
+  }
+  try {
+    await api(`/bookings/${b.bookingId}`, { method:'PATCH', body: JSON.stringify(body) });
+    closeModal('modalEditBooking');
+    toast('Đã cập nhật booking');
+    showDetail(b.bookingId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
 async function updateStatus(id, status) {
@@ -1327,10 +1414,11 @@ async function assignBooking(id) {
 }
 
 async function markPaid(id) {
+  if (!confirm('Xác nhận khách đã thanh toán đủ?')) return;
   try {
-    // Update via a note + direct approach — we patch status to reload, but we need payment update
-    // Use assign endpoint workaround: we'll need to reload and show note
-    toast('Tính năng đang phát triển — vui lòng dùng API trực tiếp', 'info');
+    const res = await api(`/bookings/${id}/payment`, { method:'PATCH', body: JSON.stringify({ paid: true }) });
+    toast(res.message);
+    showDetail(id);
   } catch(e) { toast(e.message, 'error'); }
 }
 
