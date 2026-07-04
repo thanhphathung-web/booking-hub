@@ -33,7 +33,7 @@ app.use('/api/webhook',    require('./src/routes/webhook'));
 
 // Health check
 app.get('/api/health', (req, res) =>
-  res.json({ status: 'OK', version: '1.0.0', time: new Date().toISOString() }));
+  res.json({ status: 'OK', version: require('./package.json').version, time: new Date().toISOString() }));
 
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>
