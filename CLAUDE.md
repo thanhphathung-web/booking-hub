@@ -169,6 +169,14 @@ PATCH  /api/users/:username/toggle    → khoá/mở khoá
 DELETE /api/users/:username
 ```
 
+### Webhook (website CTY2)
+```
+POST /api/webhook/bookings   header: X-API-Key = WEBHOOK_API_KEY (.env; không set = endpoint tắt 503)
+                             body giống POST /api/bookings; source chỉ nhận WEBSITE|PLATFORM (mặc định WEBSITE)
+                             → 201 {bookingId, status} (response gọn, không lộ dữ liệu nội bộ)
+```
+Logic tạo booking dùng chung `src/services/createBooking.js` (admin route + webhook), createdBy = 'cty2-webhook'.
+
 ### Digest (CEO only)
 ```
 GET    /api/digest/preview   → xem nội dung digest sẽ gửi (không gửi thật)
@@ -343,9 +351,6 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 ## Tính năng chưa có (backlog)
 
 - [ ] Báo cáo doanh thu theo tháng / xuất Excel
-- [ ] Assign NVDH/WC trực tiếp từ UI
-- [ ] Filter nâng cao (theo ngày, theo người phụ trách)
-- [ ] API webhook cho website CTY2
 - [ ] Migrate sang MongoDB khi scale
 
 ---

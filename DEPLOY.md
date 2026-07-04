@@ -68,16 +68,17 @@ NODE_ENV=production
 
 ## 🔗 Tích hợp API vào website Cty2 (Node.js)
 
-Thêm vào website của bạn:
+Website CTY2 dùng endpoint webhook với API key — không cần tài khoản user, không lo token hết hạn.
+API key nằm trong biến `WEBHOOK_API_KEY` (Railway Variables).
 
 ```javascript
 // Tạo booking từ website Cty2
 async function createBookingFromWebsite(orderData) {
-  const response = await fetch('https://your-booking-hub.railway.app/api/bookings', {
+  const response = await fetch('https://booking-hub-production.up.railway.app/api/webhook/bookings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SYSTEM_TOKEN}`  // Token của user CS
+      'X-API-Key': process.env.BOOKING_HUB_API_KEY
     },
     body: JSON.stringify({
       product: orderData.tourName,
