@@ -11,36 +11,33 @@ Mở trình duyệt: **http://localhost:3000**
 
 ---
 
-## ☁️ Deploy lên Railway.app (Khuyến nghị — Free tier)
+## ☁️ Railway (đang chạy production)
 
-### Bước 1: Tạo tài khoản
-- Vào https://railway.app → Sign up bằng GitHub
+**URL:** https://booking-hub-production.up.railway.app
+**Auto-deploy:** repo GitHub `thanhphathung-web/booking-hub` đã nối vào service —
+`git push` lên `master` là Railway tự build + deploy, không cần lệnh gì thêm.
+**Dữ liệu:** volume `booking-hub-volume` mount `/app/data` — NeDB giữ nguyên qua các lần deploy.
 
-### Bước 2: Upload code
-```bash
-# Cài Railway CLI
-npm install -g @railway/cli
+Deploy thủ công (khi cần): `railway up --detach`
 
-# Login
-railway login
-
-# Tạo project mới
-railway init
-
-# Deploy
-railway up
+### Environment variables (Railway dashboard → Variables)
 ```
-
-### Bước 3: Set environment variables
-Trong Railway dashboard → Variables:
-```
-PORT=3000
-JWT_SECRET=<thay_bang_chuoi_ngau_nhien_dai_32_ky_tu>
+JWT_SECRET=<chuỗi ngẫu nhiên 32 ký tự>        # bắt buộc
 NODE_ENV=production
-```
+APP_URL=https://booking-hub-production.up.railway.app   # link trong email digest
 
-### Bước 4: Lấy URL
-Railway tự cấp URL dạng: `https://booking-hub-xxxx.up.railway.app`
+# Email digest 07:30 sáng (bỏ trống = tắt)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=<email gửi>
+SMTP_PASS=<Gmail App Password — cần bật 2FA, tạo tại myaccount.google.com/apppasswords>
+SMTP_FROM="Booking Hub <email gửi>"
+
+# Zalo OA — kênh nhắc việc thứ 2 (bỏ trống = tắt)
+ZALO_APP_ID=
+ZALO_APP_SECRET=
+ZALO_REFRESH_TOKEN=
+```
 
 ---
 
@@ -106,19 +103,15 @@ async function createBookingFromWebsite(orderData) {
 
 ---
 
-## 👤 Tài khoản mặc định
+## 👤 Tài khoản
 
-| Username | Password | Role | Công ty |
-|----------|----------|------|---------|
-| ceo      | ceo123   | CEO  | ALL     |
-| tpdh     | tpdh123  | TPDH | CTY1    |
-| nvdh     | nvdh123  | NVDH | CTY1    |
-| cs       | cs123    | CS   | CTY2    |
-| pm       | pm123    | PM   | CTY2    |
-| wc       | wc123    | WC   | CTY3    |
-| ketoan   | kt123    | KETOAN | ALL  |
+Mật khẩu mặc định (ceo123, tpdh123…) chỉ tồn tại khi seed lần đầu ở môi trường mới.
+**Production đã đổi toàn bộ sang mật khẩu ngẫu nhiên ngày 2026-07-03** — xem file
+`TAI-KHOAN-PRODUCTION.local.txt` trên máy local (không commit; lưu vào chỗ an toàn rồi xoá file).
 
-⚠️ **Đổi mật khẩu ngay sau khi deploy!** (CEO → Settings trong app)
+7 tài khoản: ceo (CEO), tpdh (TPDH), nvdh (NVDH), cs (CS), pm (PM), wc (WC), ketoan (KETOAN).
+
+⚠️ Với môi trường deploy mới, đổi mật khẩu mặc định ngay (CEO → Quản lý User → 🔑 Đổi pass).
 
 ---
 
