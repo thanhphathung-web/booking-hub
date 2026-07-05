@@ -216,6 +216,8 @@ Tạo booking với `productId` → server snapshot `costEstimate` = Σ PER_GROU
 GET /api/reports/post-analysis   ?from=&to= (lọc theo tourDate; CEO/KETOAN/TPDH)
 → { summary, tours, byProduct, suppliers }
 GET /api/reports/activity        ?bookingId=&type=&by=&limit= (CEO only) — audit log, trang "Audit Log" trên UI
+GET /api/reports/revenue         ?year= (finance:read — CEO/KETOAN) — doanh thu theo tháng khởi hành:
+                                 {year, years, months[12]: {tours,pax,revenue,collected,pending,cost,profit}, totals}
 ```
 Chỉ tính tour COMPLETED. Per tour: doanh thu, dự toán (costEstimate), thực chi (Σ expenses), chênh dự toán, lãi/lỗ, margin. byProduct gom theo productId. suppliers xếp hạng theo avgRating (chỉ NCC đã được chấm), <3★ cảnh báo. UI: trang "Post Analysis" + xuất CSV.
 
@@ -358,11 +360,11 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Sửa booking + cập nhật thanh toán (đổi tourDate tự tính lại deadline checklist)
 - [x] Chống brute-force login (5 sai/15min theo IP+username → khoá 15min; trust proxy cho Railway)
 - [x] Audit Log viewer (CEO) — giai đoạn 7 Internal Audit
-- [x] Smoke test 30 case (`npm test`)
+- [x] Smoke test 34 case (`npm test`)
+- [x] Báo cáo doanh thu theo tháng (server-side, chọn năm, xuất CSV/Excel)
 
 ## Tính năng chưa có (backlog)
 
-- [ ] Báo cáo doanh thu theo tháng / xuất Excel
 - [ ] Migrate sang MongoDB khi scale
 
 ---

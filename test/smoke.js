@@ -137,6 +137,13 @@ async function login(username, password) {
     check('lãi = 10tr − 4tr = 6tr', r.data?.tours?.[0]?.profit === 6000000, String(r.data?.tours?.[0]?.profit));
     r = await req('GET', '/api/reports/post-analysis', { token: nvdh });
     check('NVDH xem post-analysis → 403', r.status === 403);
+    r = await req('GET', '/api/reports/revenue?year=2030', { token: ketoan });
+    check('KETOAN xem doanh thu tháng', r.status === 200 && r.data?.months?.length === 12);
+    check('doanh thu tháng 2/2030 = 10tr (booking COMPLETED)', r.data?.months?.[1]?.revenue === 10000000,
+      String(r.data?.months?.[1]?.revenue));
+    check('chi tháng 2/2030 = 4tr, lãi 6tr', r.data?.months?.[1]?.profit === 6000000, String(r.data?.months?.[1]?.profit));
+    r = await req('GET', '/api/reports/revenue', { token: nvdh });
+    check('NVDH xem doanh thu → 403', r.status === 403);
 
     console.log('\n— My-tasks + digest —');
     r = await req('GET', '/api/bookings/my-tasks', { token: nvdh });

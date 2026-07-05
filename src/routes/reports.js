@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requirePerm } = require('../middleware/auth');
 
 // Post Analysis (giai đoạn 6): lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC
 // Chỉ tính tour COMPLETED — tour chưa xong chưa quyết toán được
@@ -74,6 +74,45 @@ router.get('/post-analysis', requireAuth, async (req, res) => {
       .sort((a, b) => b.avgRating - a.avgRating);
 
     res.json({ summary, tours, byProduct, suppliers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/reports/revenue ──────────────────────────────
+// Doanh thu theo tháng (theo tourDate — tháng thực hiện tour), CEO/KETOAN
+// Mỗi tháng: số tour, khách, doanh thu, đã thu, chờ thu, chi thực tế, lãi gộp
+router.get('/revenue', ...requirePerm('finance:read'), async (req, res) => {
+  try {
+    const all = await dbAsync.find('bookings', { status: { $ne: 'CANCELLED' } }, { tourDate: 1 });
+    const years = [...new Set(all.map(b => (b.tourDate || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y)))].sort();
+    const year = /^\d{4}$/.test(req.query.year) ? req.query.year
+      : (years.includes(String(new Date().getFullYear())) ? String(new Date().getFullYear()) : years[years.length - 1]);
+
+    const months = Array.from({ length: 12 }, (_, i) => ({
+      month: `${year}-${String(i + 1).padStart(2, '0')}`,
+      tours: 0, pax: 0, revenue: 0, collected: 0, pending: 0, cost: 0, profit: 0,
+    }));
+    for (const b of all) {
+      if ((b.tourDate || '').slice(0, 4) !== year) continue;
+      const idx = parseInt(b.tourDate.slice(5, 7), 10) - 1;
+      if (idx < 0 || idx > 11) continue;
+      const m = months[idx];
+      const amount = b.payment?.amount || 0;
+      const cost = (b.expenses || []).reduce((s, e) => s + (e.amount || 0), 0);
+      m.tours++; m.pax += (b.adults || 0) + (b.children || 0);
+      m.revenue += amount;
+      if (b.payment?.paid) m.collected += amount; else m.pending += amount;
+      m.cost += cost;
+    }
+    for (const m of months) m.profit = m.revenue - m.cost;
+
+    const totals = months.reduce((t, m) => ({
+      tours: t.tours + m.tours, pax: t.pax + m.pax, revenue: t.revenue + m.revenue,
+      collected: t.collected + m.collected, pending: t.pending + m.pending,
+      cost: t.cost + m.cost, profit: t.profit + m.profit,
+    }), { tours: 0, pax: 0, revenue: 0, collected: 0, pending: 0, cost: 0, profit: 0 });
+    totals.margin = totals.revenue > 0 ? Math.round(totals.profit / totals.revenue * 100) : null;
+
+    res.json({ year, years, months, totals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

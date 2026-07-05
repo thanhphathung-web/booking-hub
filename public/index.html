@@ -403,15 +403,16 @@
 
     <!-- REVENUE PAGE -->
     <div id="page-revenue" class="page">
-      <h2 class="text-2xl font-bold text-gray-800 mb-6">💰 Báo cáo Doanh thu</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6" id="revenueCards"></div>
-      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-gray-700">Chi tiết thanh toán</h3>
-          <button onclick="exportCSV()" class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 flex items-center gap-1">
-            ⬇ Xuất CSV
-          </button>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h2 class="text-2xl font-bold text-gray-800">💰 Doanh thu theo tháng</h2>
+        <div class="flex items-center gap-2">
+          <select id="revYear" class="input" style="width:auto" onchange="loadRevenue()"></select>
+          <button onclick="exportCSV()" class="text-xs bg-green-700 text-white px-3 py-2 rounded-lg hover:bg-green-600">⬇ Xuất CSV (Excel)</button>
         </div>
+      </div>
+      <p class="text-xs text-gray-400 mb-4">Tính theo tháng khởi hành tour (không tính đơn CANCELLED). Chi thực tế lấy từ sổ chi của từng booking.</p>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="revenueCards"></div>
+      <div class="bg-white rounded-xl shadow-sm p-6">
         <div id="revenueTable"></div>
       </div>
     </div>
@@ -1983,82 +1984,92 @@ async function submitBooking() {
   }
 }
 
-// ── Revenue page ──────────────────────────────────────────
+// ── Revenue page (báo cáo doanh thu theo tháng, server-side) ──
 async function loadRevenue() {
   try {
-    const { bookings, total } = await api('/bookings?limit=200');
-    const paid   = bookings.filter(b => b.payment.paid);
-    const unpaid = bookings.filter(b => !b.payment.paid && !['CANCELLED'].includes(b.status));
-    const totalRevenue  = paid.reduce((s,b) => s + (b.payment.amount||0), 0);
-    const pendingRevenue = unpaid.reduce((s,b) => s + (b.payment.amount||0), 0);
+    const yearSel = document.getElementById('revYear');
+    const q = yearSel.value ? `?year=${yearSel.value}` : '';
+    const { year, years, months, totals } = await api(`/reports/revenue${q}`);
+    window._revenueReport = { year, months, totals };
 
-    // Monthly breakdown
-    const monthly = {};
-    bookings.filter(b => b.payment.paid).forEach(b => {
-      const m = b.createdAt?.slice(0,7) || 'unknown';
-      if (!monthly[m]) monthly[m] = 0;
-      monthly[m] += b.payment.amount || 0;
-    });
+    yearSel.innerHTML = (years.length ? years : [year]).map(y =>
+      `<option value="${y}" ${y === year ? 'selected' : ''}>Năm ${y}</option>`).join('');
 
     document.getElementById('revenueCards').innerHTML = [
-      { label:'Doanh thu đã thu',   value: totalRevenue,   color:'bg-green-600',  icon:'💰', sub:`${paid.length} booking` },
-      { label:'Doanh thu chờ thu',  value: pendingRevenue, color:'bg-orange-500', icon:'⏳', sub:`${unpaid.length} booking` },
-      { label:'Tổng giá trị',       value: totalRevenue+pendingRevenue, color:'bg-blue-900', icon:'📊', sub:'Tất cả' },
+      { label:`Doanh thu ${year} · ${totals.tours} tour, ${totals.pax} khách`, value: totals.revenue, color:'bg-blue-900',   icon:'📊' },
+      { label:'Đã thu',  value: totals.collected, color:'bg-green-600',  icon:'💰' },
+      { label:'Chờ thu', value: totals.pending,   color:'bg-orange-500', icon:'⏳' },
+      { label:`Lãi gộp${totals.margin != null ? ' · margin ' + totals.margin + '%' : ''}`,
+        value: totals.profit, color: totals.profit >= 0 ? 'bg-teal-600' : 'bg-red-600', icon:'📈' },
     ].map(c => `
-      <div class="${c.color} text-white rounded-xl p-6">
-        <div class="text-3xl mb-2">${c.icon}</div>
-        <div class="text-2xl font-bold">${Number(c.value).toLocaleString('vi-VN')}đ</div>
-        <div class="text-sm opacity-80 mt-1">${c.label}</div>
-        <div class="text-xs opacity-60 mt-0.5">${c.sub}</div>
+      <div class="${c.color} text-white rounded-xl p-5">
+        <div class="text-2xl mb-1">${c.icon}</div>
+        <div class="text-xl font-bold">${Number(c.value).toLocaleString('vi-VN')}đ</div>
+        <div class="text-xs opacity-80 mt-1">${c.label}</div>
       </div>`).join('');
 
-    // Monthly table
-    const months = Object.entries(monthly).sort((a,b) => b[0].localeCompare(a[0]));
-    document.getElementById('revenueTable').innerHTML = months.length === 0
-      ? '<p class="text-gray-400 text-sm">Chưa có dữ liệu</p>'
-      : `<table class="w-full text-sm">
+    const maxRev = Math.max(...months.map(m => m.revenue), 1);
+    document.getElementById('revenueTable').innerHTML = totals.tours === 0
+      ? `<p class="text-gray-400 text-sm">Chưa có tour nào trong năm ${year}</p>`
+      : `<div class="overflow-x-auto"><table class="w-full text-sm">
           <thead class="text-left text-gray-500 border-b text-xs uppercase">
-            <tr><th class="pb-2 pr-6">Tháng</th><th class="pb-2 pr-6">Doanh thu</th><th class="pb-2">% tổng</th></tr>
+            <tr><th class="pb-2 pr-3">Tháng</th><th class="pb-2 pr-3">Tour</th><th class="pb-2 pr-3">Khách</th>
+              <th class="pb-2 pr-3 text-right">Doanh thu</th><th class="pb-2 pr-3 text-right">Đã thu</th>
+              <th class="pb-2 pr-3 text-right">Chờ thu</th><th class="pb-2 pr-3 text-right">Chi thực tế</th>
+              <th class="pb-2 pr-3 text-right">Lãi gộp</th><th class="pb-2 min-w-28"></th></tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-          ${months.map(([m, v]) => `
-            <tr class="hover:bg-gray-50">
-              <td class="py-3 pr-6 font-medium">${m}</td>
-              <td class="py-3 pr-6 font-bold text-green-700">${Number(v).toLocaleString('vi-VN')}đ</td>
-              <td class="py-3">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-100 rounded-full h-2 max-w-32">
-                    <div class="h-2 rounded-full bg-green-500" style="width:${Math.round(v/totalRevenue*100)}%"></div>
-                  </div>
-                  <span class="text-xs text-gray-500">${Math.round(v/totalRevenue*100)}%</span>
+          ${months.map(m => `
+            <tr class="hover:bg-gray-50 ${m.tours === 0 ? 'opacity-40' : ''}">
+              <td class="py-2.5 pr-3 font-medium whitespace-nowrap">Tháng ${parseInt(m.month.slice(5))}</td>
+              <td class="py-2.5 pr-3">${m.tours || '—'}</td>
+              <td class="py-2.5 pr-3">${m.pax || '—'}</td>
+              <td class="py-2.5 pr-3 text-right font-semibold whitespace-nowrap">${m.revenue ? Number(m.revenue).toLocaleString('vi-VN') + 'đ' : '—'}</td>
+              <td class="py-2.5 pr-3 text-right text-green-700 whitespace-nowrap">${m.collected ? Number(m.collected).toLocaleString('vi-VN') + 'đ' : '—'}</td>
+              <td class="py-2.5 pr-3 text-right text-orange-600 whitespace-nowrap">${m.pending ? Number(m.pending).toLocaleString('vi-VN') + 'đ' : '—'}</td>
+              <td class="py-2.5 pr-3 text-right text-red-600 whitespace-nowrap">${m.cost ? '−' + Number(m.cost).toLocaleString('vi-VN') + 'đ' : '—'}</td>
+              <td class="py-2.5 pr-3 text-right font-bold whitespace-nowrap ${m.profit > 0 ? 'text-green-600' : m.profit < 0 ? 'text-red-600' : 'text-gray-400'}">
+                ${m.tours ? (m.profit >= 0 ? '+' : '−') + Number(Math.abs(m.profit)).toLocaleString('vi-VN') + 'đ' : '—'}</td>
+              <td class="py-2.5">
+                <div class="bg-gray-100 rounded-full h-2">
+                  <div class="h-2 rounded-full bg-blue-800" style="width:${Math.round(m.revenue / maxRev * 100)}%"></div>
                 </div>
               </td>
             </tr>`).join('')}
           </tbody>
-        </table>`;
-
-    // Store for CSV export
-    window._revenueBookings = bookings;
+          <tfoot class="border-t-2 font-bold">
+            <tr>
+              <td class="py-3 pr-3">Cả năm</td>
+              <td class="py-3 pr-3">${totals.tours}</td>
+              <td class="py-3 pr-3">${totals.pax}</td>
+              <td class="py-3 pr-3 text-right whitespace-nowrap">${Number(totals.revenue).toLocaleString('vi-VN')}đ</td>
+              <td class="py-3 pr-3 text-right text-green-700 whitespace-nowrap">${Number(totals.collected).toLocaleString('vi-VN')}đ</td>
+              <td class="py-3 pr-3 text-right text-orange-600 whitespace-nowrap">${Number(totals.pending).toLocaleString('vi-VN')}đ</td>
+              <td class="py-3 pr-3 text-right text-red-600 whitespace-nowrap">−${Number(totals.cost).toLocaleString('vi-VN')}đ</td>
+              <td class="py-3 pr-3 text-right whitespace-nowrap ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                ${totals.profit >= 0 ? '+' : '−'}${Number(Math.abs(totals.profit)).toLocaleString('vi-VN')}đ</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table></div>`;
   } catch(e) { toast(e.message, 'error'); }
 }
 
 function exportCSV() {
-  const bookings = window._revenueBookings || [];
+  const r = window._revenueReport;
+  if (!r || !r.totals.tours) return toast('Chưa có dữ liệu để xuất', 'warn');
   const rows = [
-    ['Mã đơn','Tour','Ngày KH','Khách','SĐT','Loại','Status','Số tiền','Đã TT','Ngày tạo'],
-    ...bookings.map(b => [
-      b.bookingId, b.product, b.tourDate, b.customer.name, b.customer.phone,
-      b.type, b.status, b.payment.amount, b.payment.paid ? 'Có' : 'Không',
-      b.createdAt?.slice(0,10)
-    ])
+    ['Tháng','Số tour','Khách','Doanh thu','Đã thu','Chờ thu','Chi thực tế','Lãi gộp'],
+    ...r.months.map(m => [m.month, m.tours, m.pax, m.revenue, m.collected, m.pending, m.cost, m.profit]),
+    ['Cả năm', r.totals.tours, r.totals.pax, r.totals.revenue, r.totals.collected, r.totals.pending, r.totals.cost, r.totals.profit],
   ];
-  const csv = rows.map(r => r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(row => row.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url;
-  a.download = `doanh-thu-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `doanh-thu-${r.year}.csv`;
   a.click(); URL.revokeObjectURL(url);
-  toast('Đã xuất file CSV');
+  toast('Đã xuất file CSV — mở được bằng Excel');
 }
 
 // ── Audit Log ─────────────────────────────────────────────
