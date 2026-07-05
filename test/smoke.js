@@ -151,6 +151,38 @@ async function login(username, password) {
     r = await req('GET', '/api/digest/preview', { token: ceo });
     check('digest preview', r.status === 200 && Array.isArray(r.data?.digests));
 
+    console.log('\n— Calendar + chống trùng lịch NVDH —');
+    {
+      // 2 tour 3 ngày chồng nhau: 2030-06-10 (3N) và 2030-06-12 (3N)
+      let r1 = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cal A 3N2Đ', tourDate: '2030-06-10', adults: 2,
+        customer: { name: 'Cal A', phone: '0900000011' } } });
+      const calA = r1.data.booking.bookingId;
+      let r2 = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cal B 3N2Đ', tourDate: '2030-06-12', adults: 2,
+        customer: { name: 'Cal B', phone: '0900000012' } } });
+      const calB = r2.data.booking.bookingId;
+
+      r = await req('GET', '/api/bookings/calendar?month=2030-06', { token: nvdh });
+      check('calendar tháng 6/2030 có 2 tour, đoán đúng 3 ngày từ tên',
+        r.data?.items?.filter(i => i.bookingId === calA || i.bookingId === calB).length === 2
+        && r.data.items.find(i => i.bookingId === calA)?.days === 3);
+
+      r = await req('PATCH', `/api/bookings/${calA}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      check('phân công tour A cho nvdh → OK', r.status === 200);
+      r = await req('PATCH', `/api/bookings/${calB}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      check('tour B chồng ngày (12 vs 10+3N) → 409 kèm conflicts', r.status === 409 && r.data?.conflicts?.length === 1,
+        JSON.stringify(r.data));
+      r = await req('PATCH', `/api/bookings/${calB}/assign`, { token: ceo, body: { assignedTo: 'nvdh', force: true } });
+      check('force=true vẫn phân công được', r.status === 200);
+      // Tour không chồng (2030-06-20) phải OK không cần force
+      let r3 = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cal C 2N1Đ', tourDate: '2030-06-20', adults: 1,
+        customer: { name: 'Cal C', phone: '0900000013' } } });
+      r = await req('PATCH', `/api/bookings/${r3.data.booking.bookingId}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      check('tour không chồng ngày → OK không cần force', r.status === 200);
+    }
+
     console.log('\n— CRM khách hàng —');
     {
       // Tạo booking thứ 2 cùng SĐT với booking đầu (0900000001) → khách 2 tour

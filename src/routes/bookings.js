@@ -92,6 +92,49 @@ router.get('/my-tasks', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Helpers: số ngày tour + khoảng ngày ───────────────────
+// Ưu tiên durationDays của sản phẩm; không có thì đoán từ tên ("Tour Đà Lạt 3N2Đ" → 3); mặc định 1
+async function getDurationDays(b) {
+  if (b.productId) {
+    const p = await dbAsync.findOne('products', { productId: b.productId });
+    if (p?.durationDays) return p.durationDays;
+  }
+  const m = String(b.product || '').match(/(\d+)\s*N/i);
+  return m ? Math.max(1, Math.min(30, parseInt(m[1]))) : 1;
+}
+
+function addDaysYmd(ymd, n) {
+  const d = new Date(ymd + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// ── GET /api/bookings/calendar ────────────────────────────
+// Booking cho lịch tháng — gồm cả tour bắt đầu trước nhưng kéo dài vào tháng
+router.get('/calendar', ...requirePerm('bookings:read'), async (req, res) => {
+  try {
+    const month = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
+      : new Date().toISOString().slice(0, 7);
+    const monthStart = month + '-01';
+    const monthEnd = addDaysYmd(addDaysYmd(monthStart, 32).slice(0, 7) + '-01', -1);
+    const bookings = await dbAsync.find('bookings', {
+      status: { $ne: 'CANCELLED' },
+      tourDate: { $gte: addDaysYmd(monthStart, -30), $lte: monthEnd }, // đệm 30 ngày cho tour dài
+    }, { tourDate: 1 });
+
+    const items = [];
+    for (const b of bookings) {
+      const days = await getDurationDays(b);
+      const endDate = addDaysYmd(b.tourDate, days - 1);
+      if (endDate < monthStart) continue; // kết thúc trước tháng đang xem
+      items.push({ bookingId: b.bookingId, product: b.product, tourDate: b.tourDate,
+        endDate, days, status: b.status, type: b.type, assignedTo: b.assignedTo,
+        pax: (b.adults || 0) + (b.children || 0) });
+    }
+    res.json({ month, items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/bookings/:id ─────────────────────────────────
 router.get('/:id', ...requirePerm('bookings:read'), async (req, res) => {
   try {
@@ -229,9 +272,36 @@ router.patch('/:id/status', ...requirePerm('bookings:update'), async (req, res) 
 });
 
 // ── PATCH /api/bookings/:id/assign ───────────────────────
+// Chống trùng lịch: NVDH đã có tour chồng ngày → 409 kèm danh sách; gửi lại với force=true để vẫn phân công
 router.patch('/:id/assign', ...requirePerm('bookings:update'), async (req, res) => {
   try {
-    const { assignedTo, wcAssigned } = req.body;
+    const { assignedTo, wcAssigned, force } = req.body;
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    if (assignedTo && assignedTo !== booking.assignedTo && !force) {
+      const days = await getDurationDays(booking);
+      const start = booking.tourDate;
+      const end = addDaysYmd(start, days - 1);
+      const others = await dbAsync.find('bookings', {
+        assignedTo, status: { $nin: ['CANCELLED', 'COMPLETED'] },
+        bookingId: { $ne: req.params.id },
+      });
+      const conflicts = [];
+      for (const o of others) {
+        const oDays = await getDurationDays(o);
+        const oEnd = addDaysYmd(o.tourDate, oDays - 1);
+        if (o.tourDate <= end && start <= oEnd)
+          conflicts.push({ bookingId: o.bookingId, product: o.product, tourDate: o.tourDate, days: oDays });
+      }
+      if (conflicts.length) {
+        return res.status(409).json({
+          error: `⚠️ ${assignedTo} đã có ${conflicts.length} tour trùng lịch (${start} → ${end})`,
+          conflicts,
+        });
+      }
+    }
+
     const now = new Date().toISOString();
     const upd = { updatedAt: now };
     if (assignedTo) upd.assignedTo = assignedTo;

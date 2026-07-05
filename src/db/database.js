@@ -11,9 +11,9 @@ const db = {
   activity: new Datastore({ filename: path.join(DATA_DIR, 'activity.db'), autoload: true }),
 };
 
-// Auto-compact daily
-db.users.persistence.setAutocompactionInterval(86400000);
-db.bookings.persistence.setAutocompactionInterval(86400000);
+// Auto-compact daily (API mới của @seald-io/nedb — gọi trực tiếp trên datastore)
+db.users.setAutocompactionInterval(86400000);
+db.bookings.setAutocompactionInterval(86400000);
 
 // Promise wrappers
 const dbAsync = {

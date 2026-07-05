@@ -151,10 +151,13 @@ PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs
                                  chặn khi COMPLETED/CANCELLED; đổi tourDate tự tính lại deadline checklist chưa done)
 PATCH  /api/bookings/:id/payment body: {amount?, paid?} — finance:payment (CEO/KETOAN)
 PATCH  /api/bookings/:id/status  body: {status, note?}
-PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?}
+PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?, force?} — NVDH trùng lịch (theo số ngày tour)
+                                 → 409 {conflicts}; force=true để vẫn phân công (UI hiện confirm)
 POST   /api/bookings/:id/note    body: {text}
 GET    /api/bookings/:id/brief   → {brief: string} (text để gửi Zalo/email cho CTY1)
 GET    /api/bookings/my-tasks    → {tasks, overdue, dueToday} — checklist item chưa xong của user hiện tại
+GET    /api/bookings/calendar    ?month=YYYY-MM → {items: [{bookingId, product, tourDate, endDate, days, status, assignedTo, pax}]}
+                                 (days: từ product.durationDays, hoặc đoán "3N" trong tên, mặc định 1; trang "Lịch tour")
 PATCH  /api/bookings/:id/checklist/:code  body: {done, note?} — CEO/TPDH tick mọi item, role khác chỉ item của mình
 POST   /api/bookings/:id/expenses         body: {category, desc, amount, hasReceipt?}
 DELETE /api/bookings/:id/expenses/:expId  — người ghi hoặc CEO/TPDH/KETOAN
@@ -381,6 +384,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Báo cáo doanh thu theo tháng (server-side, chọn năm, xuất CSV/Excel)
 - [x] Backup tự động 02:00 qua email + tải thủ công + script khôi phục
 - [x] CRM khách hàng: gom theo SĐT, phân hạng VIP/Thân thiết/Mới, lịch sử + ghi chú chăm sóc
+- [x] Lịch tour calendar tháng + chống trùng lịch NVDH (409 + force override)
 
 ## Tính năng chưa có (backlog)
 
