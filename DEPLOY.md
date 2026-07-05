@@ -14,11 +14,10 @@ Mở trình duyệt: **http://localhost:3000**
 ## ☁️ Railway (đang chạy production)
 
 **URL:** https://booking-hub-production.up.railway.app
-**Nguồn deploy:** service đã nối repo GitHub `thanhphathung-web/booking-hub` (branch master).
-⚠️ Auto-deploy khi push **chưa hoạt động** — cần cài Railway GitHub App trên repo:
-vào https://github.com/apps/railway-app → Install → chọn repo `booking-hub` (làm 1 lần).
-Tạm thời deploy bằng: `railway service source connect --repo thanhphathung-web/booking-hub --branch master --service booking-hub`
-(trigger build từ commit mới nhất trên GitHub) hoặc `railway up --detach` (đẩy code local).
+**Auto-deploy:** ✅ hoạt động — `git push` lên `master` là Railway tự build + deploy (xác nhận 2026-07-05).
+Yêu cầu đã setup đủ: (1) Railway GitHub App cài trên account `thanhphathung-web` với quyền repo `booking-hub`,
+(2) service source nối repo. Lưu ý rút ra: nếu đổi cài đặt App, phải `railway service source disconnect`
+rồi `connect` lại thì trigger mới được đăng ký. Deploy tay khi cần gấp: `railway up --detach`.
 **Dữ liệu:** volume `booking-hub-volume` mount `/app/data` — NeDB giữ nguyên qua các lần deploy.
 
 Deploy thủ công (khi cần): `railway up --detach`
