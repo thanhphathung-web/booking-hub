@@ -19,7 +19,9 @@ async function sendViaResend(to, subject, text) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: process.env.SMTP_FROM || 'Booking Hub <onboarding@resend.dev>',
+      // Resend chỉ cho gửi từ domain đã verify — chưa verify thì dùng onboarding@resend.dev
+      // (KHÔNG dùng SMTP_FROM ở đây: địa chỉ gmail sẽ bị Resend từ chối)
+      from: process.env.RESEND_FROM || 'Booking Hub <onboarding@resend.dev>',
       to: [to], subject, text,
     }),
     signal: AbortSignal.timeout(20000),
