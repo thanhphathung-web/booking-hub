@@ -151,6 +151,29 @@ async function login(username, password) {
     r = await req('GET', '/api/digest/preview', { token: ceo });
     check('digest preview', r.status === 200 && Array.isArray(r.data?.digests));
 
+    console.log('\n— CRM khách hàng —');
+    {
+      // Tạo booking thứ 2 cùng SĐT với booking đầu (0900000001) → khách 2 tour
+      await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour lần 2 của khách quen', tourDate: '2030-05-01', adults: 2,
+        customer: { name: 'Khach Test', phone: '0900 000 001' }, // SĐT có khoảng trắng — phải gom chung
+        payment: { amount: 5000000, paid: true },
+      }});
+      r = await req('GET', '/api/customers', { token: cs });
+      const kh = r.data?.customers?.find(c => c.phoneKey === '0900000001');
+      check('gom 2 booking cùng SĐT (kể cả khác định dạng)', kh?.bookings === 2, JSON.stringify(kh));
+      check('hạng THANTHIET với 2 tour', kh?.tier === 'THANTHIET', kh?.tier);
+      check('tổng thực thu đúng (10tr paid + 5tr paid)', kh?.totalPaid === 15000000, String(kh?.totalPaid));
+      r = await req('GET', '/api/customers/0900000001', { token: cs });
+      check('hồ sơ khách có lịch sử 2 booking', r.data?.history?.length === 2);
+      r = await req('POST', '/api/customers/0900000001/note', { token: cs, body: { text: 'Khách thích ăn chay' } });
+      check('CS thêm ghi chú khách', r.status === 201);
+      r = await req('GET', '/api/customers/0900000001', { token: ceo });
+      check('ghi chú đọc lại được', r.data?.notes?.[0]?.text === 'Khách thích ăn chay');
+      r = await req('GET', '/api/customers?search=0900000001', { token: ceo });
+      check('tìm theo SĐT', r.data?.customers?.length === 1);
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');

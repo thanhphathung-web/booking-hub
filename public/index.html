@@ -101,6 +101,9 @@
       <a onclick="showPage('new-booking')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>➕</span><span>Tạo Booking mới</span>
       </a>
+      <a onclick="showPage('customers')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+        <span>👥</span><span>Khách hàng</span>
+      </a>
       <a onclick="showPage('products')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>📦</span><span>Sản phẩm Tour</span>
       </a>
@@ -378,6 +381,19 @@
       <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
+    <!-- CUSTOMERS PAGE -->
+    <div id="page-customers" class="page">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h2 class="text-2xl font-bold text-gray-800">👥 Khách hàng</h2>
+        <span id="customerCount" class="text-xs text-gray-400"></span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <input id="customerSearch" class="input" placeholder="🔍 Tìm theo tên hoặc SĐT..."
+          oninput="clearTimeout(window._cdb);window._cdb=setTimeout(loadCustomers,400)"/>
+      </div>
+      <div id="customerTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
     <!-- PRODUCTS PAGE -->
     <div id="page-products" class="page">
       <div class="flex items-center justify-between mb-6">
@@ -605,6 +621,24 @@
   </div>
 </div>
 
+<div id="modalCustomer" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-2xl my-8">
+    <div id="customerProfile"></div>
+    <div class="mt-4 border-t pt-4">
+      <h4 class="font-semibold text-gray-700 mb-2 text-sm">📒 Ghi chú chăm sóc</h4>
+      <div id="customerNotes" class="space-y-2 mb-3 max-h-40 overflow-y-auto pr-1"></div>
+      <div class="flex gap-2">
+        <input id="customerNoteInput" placeholder="Sở thích, lưu ý, hẹn chăm sóc..." class="input flex-1 text-sm"
+          onkeydown="if(event.key==='Enter')addCustomerNote()"/>
+        <button onclick="addCustomerNote()" class="bg-gray-700 text-white px-4 rounded-lg text-sm hover:bg-gray-600">Lưu</button>
+      </div>
+    </div>
+    <div class="mt-5">
+      <button onclick="closeModal('modalCustomer')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalEditBooking" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg my-8">
     <h3 class="text-lg font-bold mb-1">✏️ Sửa thông tin booking</h3>
@@ -828,6 +862,7 @@ function showPage(page) {
   if (page === 'suppliers')  loadSuppliers();
   if (page === 'post-analysis') loadPostAnalysis();
   if (page === 'audit')      loadAudit();
+  if (page === 'customers')  loadCustomers();
   if (page === 'new-booking') fillProductSelect();
   if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
@@ -1226,7 +1261,8 @@ async function showDetail(id) {
             <div class="grid grid-cols-2 gap-3 text-sm">
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Ngày khởi hành</span><strong>${b.tourDate}${daysToTour >= 0 && daysToTour <= 7 ? ` <span class="text-orange-600 text-xs">(còn ${daysToTour}N)</span>` : ''}</strong></div>
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Số khách</span><strong>${b.adults} NL${b.children>0?' + '+b.children+' TE':''}</strong></div>
-              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Khách hàng</span><strong>${esc(b.customer.name)}</strong></div>
+              <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Khách hàng</span>
+                <a data-p="${esc(b.customer.phone)}" onclick="openCustomer(this.dataset.p)" class="font-semibold text-blue-700 hover:underline cursor-pointer" title="Xem hồ sơ khách hàng">${esc(b.customer.name)} 👤</a></div>
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">SĐT</span>
                 <a href="tel:${esc(b.customer.phone)}" class="font-semibold text-blue-700 hover:underline">${esc(b.customer.phone)}</a>
               </div>
@@ -2115,6 +2151,112 @@ async function loadAudit() {
           </tr>`).join('')}
         </tbody></table></div>`;
   } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+// ── CRM Khách hàng ────────────────────────────────────────
+const TIER_BADGES = {
+  VIP:       '<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-bold">⭐ VIP</span>',
+  THANTHIET: '<span class="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">💚 Thân thiết</span>',
+  MOI:       '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Mới</span>',
+};
+
+async function loadCustomers() {
+  const tableEl = document.getElementById('customerTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(4).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const search = document.getElementById('customerSearch').value.trim();
+    const { customers, total } = await api(`/customers${search ? '?search=' + encodeURIComponent(search) : ''}`);
+    document.getElementById('customerCount').textContent = `${total} khách hàng`;
+    if (!customers.length) {
+      tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Không tìm thấy khách hàng nào</p>';
+      return;
+    }
+    tableEl.innerHTML = `
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
+          <tr><th class="px-4 py-3">Khách hàng</th><th class="px-4 py-3">Hạng</th><th class="px-4 py-3">Số tour</th>
+            <th class="px-4 py-3 text-right">Đã chi (thực thu)</th><th class="px-4 py-3">Lần đi gần nhất</th>
+            <th class="px-4 py-3"></th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+        ${customers.map(c => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3">
+              <div class="font-medium">${esc(c.name)} ${c.wellness ? '<span class="text-xs text-purple-500" title="Đã dùng Wellness">🏥</span>' : ''} ${c.upcoming ? '<span class="text-xs text-orange-500" title="Có tour sắp tới">🧳</span>' : ''}</div>
+              <div class="text-xs text-gray-400">${esc(c.phone)}${c.email ? ' · ' + esc(c.email) : ''}</div>
+            </td>
+            <td class="px-4 py-3">${TIER_BADGES[c.tier] || ''}</td>
+            <td class="px-4 py-3">${c.bookings}${c.cancelled ? ` <span class="text-xs text-red-400">(+${c.cancelled} huỷ)</span>` : ''}</td>
+            <td class="px-4 py-3 text-right font-semibold whitespace-nowrap">${Number(c.totalPaid).toLocaleString('vi-VN')}đ
+              ${c.totalValue > c.totalPaid ? `<div class="text-xs text-orange-500 font-normal">chờ thu ${Number(c.totalValue - c.totalPaid).toLocaleString('vi-VN')}đ</div>` : ''}</td>
+            <td class="px-4 py-3 whitespace-nowrap">${c.lastTourDate || '—'}</td>
+            <td class="px-4 py-3"><button data-p="${esc(c.phone)}" onclick="openCustomer(this.dataset.p)"
+              class="text-blue-600 hover:underline text-xs whitespace-nowrap">Hồ sơ →</button></td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+let CURRENT_CUSTOMER_PHONE = null;
+
+async function openCustomer(phone) {
+  CURRENT_CUSTOMER_PHONE = phone;
+  document.getElementById('customerProfile').innerHTML = '<div class="skeleton h-24 w-full"></div>';
+  document.getElementById('customerNotes').innerHTML = '';
+  document.getElementById('modalCustomer').classList.remove('hidden');
+  try {
+    const { customer: c, history, notes } = await api(`/customers/${encodeURIComponent(phone)}`);
+    document.getElementById('customerProfile').innerHTML = `
+      <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+        <div>
+          <h3 class="text-xl font-bold text-gray-800">${esc(c.name)}</h3>
+          <p class="text-sm text-gray-400">${esc(c.phone)}${c.email ? ' · ' + esc(c.email) : ''}</p>
+        </div>
+        ${TIER_BADGES[c.tier] || ''}
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-center mb-4">
+        <div class="bg-gray-50 rounded-lg p-3"><div class="text-xl font-bold">${c.bookings}</div><div class="text-xs text-gray-500">tour đã đặt</div></div>
+        <div class="bg-gray-50 rounded-lg p-3"><div class="text-xl font-bold text-green-600">${Number(c.totalPaid).toLocaleString('vi-VN')}đ</div><div class="text-xs text-gray-500">đã chi (thực thu)</div></div>
+        <div class="bg-gray-50 rounded-lg p-3"><div class="text-xl font-bold">${c.pax}</div><div class="text-xs text-gray-500">lượt khách đi cùng</div></div>
+      </div>
+      <h4 class="font-semibold text-gray-700 mb-2 text-sm">🧳 Lịch sử booking</h4>
+      <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+        ${history.map(h => `
+          <div class="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2">
+            <a onclick="closeModal('modalCustomer');showDetail('${h.bookingId}')" class="font-mono text-xs text-blue-600 hover:underline cursor-pointer">${h.bookingId}</a>
+            <span class="flex-1 truncate">${esc(h.product)}</span>
+            <span class="text-xs text-gray-400 whitespace-nowrap">${h.tourDate}</span>
+            ${statusBadge(h.status)}
+            <span class="text-xs font-semibold whitespace-nowrap ${h.paid ? 'text-green-600' : 'text-orange-500'}">${Number(h.amount).toLocaleString('vi-VN')}đ</span>
+          </div>`).join('')}
+      </div>`;
+    renderCustomerNotes(notes);
+  } catch(e) {
+    document.getElementById('customerProfile').innerHTML = `<p class="text-red-600 text-sm">${esc(e.message)}</p>`;
+  }
+}
+
+function renderCustomerNotes(notes) {
+  document.getElementById('customerNotes').innerHTML = !notes.length
+    ? '<p class="text-gray-400 text-xs">Chưa có ghi chú — lưu sở thích, dị ứng, dịp đặc biệt của khách để chăm sóc tốt hơn</p>'
+    : [...notes].reverse().map(n => `
+      <div class="bg-yellow-50 border border-yellow-100 rounded-lg p-2.5 text-sm">
+        <p class="text-gray-800">${esc(n.text)}</p>
+        <p class="text-xs text-gray-400 mt-0.5">${esc(n.name)} · ${new Date(n.at).toLocaleString('vi-VN')}</p>
+      </div>`).join('');
+}
+
+async function addCustomerNote() {
+  const input = document.getElementById('customerNoteInput');
+  const text = input.value.trim();
+  if (!text || !CURRENT_CUSTOMER_PHONE) return;
+  try {
+    await api(`/customers/${encodeURIComponent(CURRENT_CUSTOMER_PHONE)}/note`, { method:'POST', body: JSON.stringify({text}) });
+    input.value = '';
+    const { notes } = await api(`/customers/${encodeURIComponent(CURRENT_CUSTOMER_PHONE)}`);
+    renderCustomerNotes(notes);
+    toast('Đã lưu ghi chú khách hàng');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── Backup ────────────────────────────────────────────────

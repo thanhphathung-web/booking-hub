@@ -180,6 +180,14 @@ POST /api/webhook/bookings   header: X-API-Key = WEBHOOK_API_KEY (.env; không s
 ```
 Logic tạo booking dùng chung `src/services/createBooking.js` (admin route + webhook), createdBy = 'cty2-webhook'.
 
+### Customers (CRM)
+```
+GET  /api/customers              ?search= (bookings:read) — hồ sơ gom từ bookings theo SĐT (chuẩn hoá bỏ ký tự ngoài số)
+GET  /api/customers/:phone       → {customer, history, notes}
+POST /api/customers/:phone/note  body: {text} — ghi chú chăm sóc (customers.db chỉ lưu notes, thống kê tính từ bookings)
+```
+Hạng khách: VIP (≥3 tour hoặc thực thu ≥50tr) | THANTHIET (2 tour) | MOI (1). UI: trang "Khách hàng" + modal hồ sơ (lịch sử booking, ghi chú); tên khách trên booking detail bấm được để mở hồ sơ.
+
 ### Backup (CEO only)
 ```
 GET  /api/backup/download   → tải data/ nén .json.gz (nút 💾 trên trang Audit Log)
@@ -372,6 +380,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Smoke test 34 case (`npm test`)
 - [x] Báo cáo doanh thu theo tháng (server-side, chọn năm, xuất CSV/Excel)
 - [x] Backup tự động 02:00 qua email + tải thủ công + script khôi phục
+- [x] CRM khách hàng: gom theo SĐT, phân hạng VIP/Thân thiết/Mới, lịch sử + ghi chú chăm sóc
 
 ## Tính năng chưa có (backlog)
 

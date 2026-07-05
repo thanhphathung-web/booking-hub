@@ -38,6 +38,7 @@ app.use('/api/reports',    require('./src/routes/reports'));
 app.use('/api/zalo',       require('./src/routes/zalo'));
 app.use('/api/webhook',    require('./src/routes/webhook'));
 app.use('/api/backup',     require('./src/routes/backup'));
+app.use('/api/customers',  require('./src/routes/customers'));
 
 // Health check
 app.get('/api/health', (req, res) =>

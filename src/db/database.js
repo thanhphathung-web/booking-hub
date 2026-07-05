@@ -50,3 +50,6 @@ db.checklist_logs  = new Datastore({ filename: path.join(DATA_DIR, 'checklist_lo
 // ── Products + NCC (Pre-Sales) ────────────────────────────
 db.products  = new Datastore({ filename: path.join(DATA_DIR, 'products.db'),  autoload: true });
 db.suppliers = new Datastore({ filename: path.join(DATA_DIR, 'suppliers.db'), autoload: true });
+
+// ── CRM: ghi chú chăm sóc khách (hồ sơ khách tính từ bookings, không lưu trùng) ──
+db.customers = new Datastore({ filename: path.join(DATA_DIR, 'customers.db'), autoload: true });
