@@ -215,6 +215,7 @@ Tạo booking với `productId` → server snapshot `costEstimate` = Σ PER_GROU
 ```
 GET /api/reports/post-analysis   ?from=&to= (lọc theo tourDate; CEO/KETOAN/TPDH)
 → { summary, tours, byProduct, suppliers }
+GET /api/reports/activity        ?bookingId=&type=&by=&limit= (CEO only) — audit log, trang "Audit Log" trên UI
 ```
 Chỉ tính tour COMPLETED. Per tour: doanh thu, dự toán (costEstimate), thực chi (Σ expenses), chênh dự toán, lãi/lỗ, margin. byProduct gom theo productId. suppliers xếp hạng theo avgRating (chỉ NCC đã được chấm), <3★ cảnh báo. UI: trang "Post Analysis" + xuất CSV.
 
@@ -303,6 +304,9 @@ router.post('/something', ...requirePerm('bookings:create'), handler);
 node server.js
 # → http://localhost:3000
 
+# Smoke test (30 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
+npm test
+
 # Test API nhanh
 curl -s -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
@@ -350,6 +354,11 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Quản lý NCC chia sẻ 3 công ty (CEO/TPDH quản lý) + chấm điểm chất lượng 1-5★
 - [x] Báo cáo Post Analysis: lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC, xuất CSV
 - [x] Kênh Zalo OA cho digest nhắc việc (auto-refresh token, tra follower để gán zaloId)
+- [x] Webhook API cho website CTY2 (X-API-Key)
+- [x] Sửa booking + cập nhật thanh toán (đổi tourDate tự tính lại deadline checklist)
+- [x] Chống brute-force login (5 sai/15min theo IP+username → khoá 15min; trust proxy cho Railway)
+- [x] Audit Log viewer (CEO) — giai đoạn 7 Internal Audit
+- [x] Smoke test 30 case (`npm test`)
 
 ## Tính năng chưa có (backlog)
 

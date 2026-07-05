@@ -12,6 +12,7 @@ const seedChecklists = require('./src/db/seed_checklists');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+app.set('trust proxy', 1); // Railway đứng sau proxy — để req.ip là IP thật của client
 
 // ── Middleware ────────────────────────────────────────────
 app.use(cors());

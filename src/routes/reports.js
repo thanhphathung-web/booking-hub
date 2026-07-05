@@ -77,4 +77,22 @@ router.get('/post-analysis', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/reports/activity ─────────────────────────────
+// Audit log (giai đoạn 7 — Internal Audit): mọi thao tác trên hệ thống, CEO only
+router.get('/activity', requireAuth, async (req, res) => {
+  if (req.user.role !== 'CEO') return res.status(403).json({ error: 'CEO only' });
+  try {
+    const q = {};
+    if (req.query.bookingId) {
+      const escaped = req.query.bookingId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      q.bookingId = new RegExp(escaped, 'i');
+    }
+    if (req.query.type) q.type = req.query.type;
+    if (req.query.by)   q.by   = req.query.by;
+    const limit = Math.min(500, parseInt(req.query.limit) || 200);
+    const items = await dbAsync.findPage('activity', q, { at: -1 }, 0, limit);
+    res.json({ items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -1,7 +1,8 @@
 const Datastore = require('nedb');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '../../data');
+// DATA_DIR env cho phép test chạy trên thư mục tạm; mặc định ./data như cũ
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
 
 const db = {
   users:    new Datastore({ filename: path.join(DATA_DIR, 'users.db'),    autoload: true }),

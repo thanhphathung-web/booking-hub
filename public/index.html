@@ -111,6 +111,9 @@
         <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
           <span>👥</span><span>Quản lý User</span>
         </a>
+        <a onclick="showPage('audit')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+          <span>🔍</span><span>Audit Log</span>
+        </a>
       </div>
       <div id="navKetoan" class="hidden">
         <a onclick="showPage('revenue')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
@@ -411,6 +414,24 @@
         </div>
         <div id="revenueTable"></div>
       </div>
+    </div>
+
+    <!-- AUDIT LOG PAGE -->
+    <div id="page-audit" class="page">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4">🔍 Audit Log — Kiểm soát nội bộ</h2>
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
+        <input id="auditBookingId" class="input" style="width:200px" placeholder="Lọc theo mã đơn..." oninput="clearTimeout(window._adb);window._adb=setTimeout(loadAudit,400)"/>
+        <select id="auditType" class="input" style="width:auto" onchange="loadAudit()">
+          <option value="">Tất cả thao tác</option>
+          <option value="BOOKING_CREATED">Tạo booking</option>
+          <option value="BOOKING_UPDATED">Sửa booking</option>
+          <option value="STATUS_CHANGED">Đổi trạng thái</option>
+          <option value="CHECKLIST_TICK">Tick checklist</option>
+          <option value="PAYMENT_UPDATED">Cập nhật thanh toán</option>
+        </select>
+        <span id="auditCount" class="text-xs text-gray-400 ml-auto"></span>
+      </div>
+      <div id="auditTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
     <!-- POST ANALYSIS PAGE -->
@@ -799,6 +820,7 @@ function showPage(page) {
   if (page === 'products')   loadProducts();
   if (page === 'suppliers')  loadSuppliers();
   if (page === 'post-analysis') loadPostAnalysis();
+  if (page === 'audit')      loadAudit();
   if (page === 'new-booking') fillProductSelect();
   if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
@@ -2037,6 +2059,45 @@ function exportCSV() {
   a.download = `doanh-thu-${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
   toast('Đã xuất file CSV');
+}
+
+// ── Audit Log ─────────────────────────────────────────────
+const ACTIVITY_LABELS = {
+  BOOKING_CREATED: '🆕 Tạo booking',   BOOKING_UPDATED: '✏️ Sửa booking',
+  STATUS_CHANGED:  '🔄 Đổi trạng thái', CHECKLIST_TICK: '✅ Tick checklist',
+  PAYMENT_UPDATED: '💳 Thanh toán',
+};
+
+async function loadAudit() {
+  const tableEl = document.getElementById('auditTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(5).fill('<div class="skeleton h-8 w-full"></div>').join('')}</div>`;
+  try {
+    const p = new URLSearchParams();
+    const bid = document.getElementById('auditBookingId').value.trim();
+    const type = document.getElementById('auditType').value;
+    if (bid)  p.set('bookingId', bid);
+    if (type) p.set('type', type);
+    const { items } = await api(`/reports/activity?${p}`);
+    document.getElementById('auditCount').textContent = `${items.length} bản ghi gần nhất`;
+    if (!items.length) { tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Không có bản ghi nào</p>'; return; }
+    tableEl.innerHTML = `
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
+          <tr><th class="px-4 py-3">Thời gian</th><th class="px-4 py-3">Thao tác</th><th class="px-4 py-3">Booking</th>
+            <th class="px-4 py-3">Chi tiết</th><th class="px-4 py-3">Người thực hiện</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+        ${items.map(a => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">${new Date(a.at).toLocaleString('vi-VN')}</td>
+            <td class="px-4 py-2.5 text-xs whitespace-nowrap">${ACTIVITY_LABELS[a.type] || a.type}</td>
+            <td class="px-4 py-2.5 font-mono text-xs">
+              ${a.bookingId ? `<a onclick="showDetail('${a.bookingId}')" class="text-blue-600 hover:underline cursor-pointer">${a.bookingId}</a>` : '—'}</td>
+            <td class="px-4 py-2.5 text-xs text-gray-600">${a.from ? esc(a.from) + ' → ' : ''}${esc(a.to || '')}</td>
+            <td class="px-4 py-2.5 text-xs font-semibold">${esc(a.by)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
 }
 
 // ── Post Analysis ─────────────────────────────────────────
