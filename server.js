@@ -37,6 +37,7 @@ app.use('/api/suppliers',  require('./src/routes/suppliers'));
 app.use('/api/reports',    require('./src/routes/reports'));
 app.use('/api/zalo',       require('./src/routes/zalo'));
 app.use('/api/webhook',    require('./src/routes/webhook'));
+app.use('/api/backup',     require('./src/routes/backup'));
 
 // Health check
 app.get('/api/health', (req, res) =>
@@ -55,6 +56,15 @@ cron.schedule('30 7 * * *', async () => {
     const results = await sendDailyDigest();
     console.log('[digest]', JSON.stringify(results));
   } catch (e) { console.error('[digest] Lỗi:', e.message); }
+}, { timezone: 'Asia/Ho_Chi_Minh' });
+
+// ── Backup dữ liệu 02:00 sáng (giờ VN) — gửi data/ nén gzip qua email ──
+cron.schedule('0 2 * * *', async () => {
+  console.log('[backup] Tạo backup đêm...');
+  try {
+    const r = await require('./src/services/backup').sendBackupEmail();
+    console.log('[backup]', JSON.stringify(r));
+  } catch (e) { console.error('[backup] Lỗi:', e.message); }
 }, { timezone: 'Asia/Ho_Chi_Minh' });
 
 // ── Start ─────────────────────────────────────────────────

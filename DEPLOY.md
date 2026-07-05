@@ -19,6 +19,9 @@ Yêu cầu đã setup đủ: (1) Railway GitHub App cài trên account `thanhpha
 (2) service source nối repo. Lưu ý rút ra: nếu đổi cài đặt App, phải `railway service source disconnect`
 rồi `connect` lại thì trigger mới được đăng ký. Deploy tay khi cần gấp: `railway up --detach`.
 **Dữ liệu:** volume `booking-hub-volume` mount `/app/data` — NeDB giữ nguyên qua các lần deploy.
+**Backup:** 02:00 sáng mỗi ngày hệ thống tự gửi email đính kèm toàn bộ data (nén .json.gz) tới `BACKUP_EMAIL`
+(mặc định = SMTP_USER). Tải thủ công: đăng nhập CEO → Audit Log → 💾 Tải backup.
+Khôi phục: tắt server → `node scripts/restore-backup.js <file.json.gz>` → bật lại (file cũ tự lưu *.bak-*).
 
 Deploy thủ công (khi cần): `railway up --detach`
 

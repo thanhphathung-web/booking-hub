@@ -11,7 +11,7 @@ function isConfigured() {
     || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 }
 
-async function sendViaResend(to, subject, text) {
+async function sendViaResend(to, subject, text, attachments) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -23,8 +23,10 @@ async function sendViaResend(to, subject, text) {
       // (KHÔNG dùng SMTP_FROM ở đây: địa chỉ gmail sẽ bị Resend từ chối)
       from: process.env.RESEND_FROM || 'Booking Hub <onboarding@resend.dev>',
       to: [to], subject, text,
+      ...(attachments ? { attachments: attachments.map(a => ({
+        filename: a.filename, content: a.content.toString('base64') })) } : {}),
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(60000),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Resend lỗi ${res.status}: ${data.message || JSON.stringify(data)}`);
@@ -48,11 +50,12 @@ function getTransport() {
   return transport;
 }
 
-async function send(to, subject, text) {
-  if (process.env.RESEND_API_KEY) return sendViaResend(to, subject, text);
+async function send(to, subject, text, attachments) {
+  if (process.env.RESEND_API_KEY) return sendViaResend(to, subject, text, attachments);
   return getTransport().sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
     to, subject, text,
+    ...(attachments ? { attachments } : {}), // nodemailer nhận Buffer trực tiếp
   });
 }
 

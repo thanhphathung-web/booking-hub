@@ -151,6 +151,23 @@ async function login(username, password) {
     r = await req('GET', '/api/digest/preview', { token: ceo });
     check('digest preview', r.status === 200 && Array.isArray(r.data?.digests));
 
+    console.log('\n— Backup —');
+    {
+      const zlib = require('zlib');
+      const res = await fetch(BASE + '/api/backup/download', { headers: { Authorization: 'Bearer ' + ceo } });
+      check('CEO tải backup → 200 gzip', res.status === 200 && res.headers.get('content-type') === 'application/gzip');
+      const buf = Buffer.from(await res.arrayBuffer());
+      let bundle = null;
+      try { bundle = JSON.parse(zlib.gunzipSync(buf).toString('utf8')); } catch (e) { /* để check fail */ }
+      check('backup giải nén được, có users.db + bookings.db',
+        bundle?.app === 'booking-hub' && !!bundle.files['users.db'] && !!bundle.files['bookings.db']);
+      check('bookings.db trong backup chứa booking test', String(bundle?.files['bookings.db']).includes('Tour Smoke Test'));
+      const res2 = await fetch(BASE + '/api/backup/download', { headers: { Authorization: 'Bearer ' + nvdh } });
+      check('NVDH tải backup → 403', res2.status === 403);
+      r = await req('POST', '/api/backup/send', { token: ceo });
+      check('gửi backup khi chưa cấu hình email → skip êm', r.status === 200 && r.data?.sent === false);
+    }
+
     console.log('\n— Audit log + rate limit —');
     r = await req('GET', '/api/reports/activity', { token: ceo });
     check('audit log có bản ghi', (r.data?.items || []).length > 0);

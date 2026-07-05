@@ -180,6 +180,13 @@ POST /api/webhook/bookings   header: X-API-Key = WEBHOOK_API_KEY (.env; không s
 ```
 Logic tạo booking dùng chung `src/services/createBooking.js` (admin route + webhook), createdBy = 'cty2-webhook'.
 
+### Backup (CEO only)
+```
+GET  /api/backup/download   → tải data/ nén .json.gz (nút 💾 trên trang Audit Log)
+POST /api/backup/send       → gửi backup qua email ngay
+```
+Cron 02:00 sáng (giờ VN) tự gửi backup qua email tới `BACKUP_EMAIL` (mặc định SMTP_USER). Khôi phục: `node scripts/restore-backup.js <file.json.gz>` khi server tắt. File >35MB → gửi email cảnh báo thay vì đính kèm.
+
 ### Digest (CEO only)
 ```
 GET    /api/digest/preview   → xem nội dung digest sẽ gửi (không gửi thật)
@@ -364,6 +371,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Audit Log viewer (CEO) — giai đoạn 7 Internal Audit
 - [x] Smoke test 34 case (`npm test`)
 - [x] Báo cáo doanh thu theo tháng (server-side, chọn năm, xuất CSV/Excel)
+- [x] Backup tự động 02:00 qua email + tải thủ công + script khôi phục
 
 ## Tính năng chưa có (backlog)
 

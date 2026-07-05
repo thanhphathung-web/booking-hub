@@ -419,7 +419,13 @@
 
     <!-- AUDIT LOG PAGE -->
     <div id="page-audit" class="page">
-      <h2 class="text-2xl font-bold text-gray-800 mb-4">🔍 Audit Log — Kiểm soát nội bộ</h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-2xl font-bold text-gray-800">🔍 Audit Log — Kiểm soát nội bộ</h2>
+        <div class="flex gap-2">
+          <button onclick="downloadBackup()" class="text-xs border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">💾 Tải backup</button>
+          <button onclick="sendBackupNow()" class="text-xs bg-green-700 text-white px-3 py-2 rounded-lg hover:bg-green-600">📧 Gửi backup email</button>
+        </div>
+      </div>
       <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
         <input id="auditBookingId" class="input" style="width:200px" placeholder="Lọc theo mã đơn..." oninput="clearTimeout(window._adb);window._adb=setTimeout(loadAudit,400)"/>
         <select id="auditType" class="input" style="width:auto" onchange="loadAudit()">
@@ -2109,6 +2115,30 @@ async function loadAudit() {
           </tr>`).join('')}
         </tbody></table></div>`;
   } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+// ── Backup ────────────────────────────────────────────────
+async function downloadBackup() {
+  try {
+    const res = await fetch(API + '/api/backup/download', {
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Lỗi tải backup');
+    const blob = await res.blob();
+    const name = (res.headers.get('Content-Disposition') || '').match(/filename="(.+)"/)?.[1]
+      || `booking-hub-backup-${new Date().toISOString().slice(0,10)}.json.gz`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    a.click(); URL.revokeObjectURL(url);
+    toast('Đã tải backup — cất vào nơi an toàn');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function sendBackupNow() {
+  try {
+    const r = await api('/backup/send', { method: 'POST' });
+    toast(r.sent ? `Đã gửi backup tới ${r.to}` : `Không gửi được: ${r.reason}`, r.sent ? 'success' : 'warn');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── Post Analysis ─────────────────────────────────────────
