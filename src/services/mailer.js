@@ -15,6 +15,10 @@ function getTransport() {
       port,
       secure: port === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      // Fail nhanh thay vì treo nhiều phút khi hạ tầng chặn cổng SMTP
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
     });
   }
   return transport;
