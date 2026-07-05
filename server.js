@@ -3,6 +3,10 @@ if (!util.isDate)   util.isDate   = (d) => d instanceof Date;
 if (!util.isArray)  util.isArray  = Array.isArray;
 if (!util.isRegExp) util.isRegExp = (r) => r instanceof RegExp;
 
+// Railway không route IPv6 ra ngoài — ép Node ưu tiên IPv4 khi resolve DNS
+// (không có dòng này: kết nối smtp.gmail.com chọn IPv6 → ENETUNREACH)
+require('dns').setDefaultResultOrder('ipv4first');
+
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
