@@ -361,12 +361,14 @@ const EXPENSE_CATEGORIES = ['XE', 'KHACHSAN', 'ANUONG', 'VE', 'BAOHIEM', 'YTE', 
 
 router.post('/:id/expenses', requireAuth, async (req, res) => {
   try {
-    const { category = 'KHAC', desc, amount, hasReceipt = false } = req.body;
+    const { category = 'KHAC', desc, amount, hasReceipt = false, nccId = null, dueDate = null } = req.body;
     if (!desc || !desc.trim()) return res.status(400).json({ error: 'Thiếu mô tả khoản chi' });
     const amt = Number(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'Số tiền phải lớn hơn 0' });
     if (!EXPENSE_CATEGORIES.includes(category))
       return res.status(400).json({ error: `Loại chi không hợp lệ. Dùng: ${EXPENSE_CATEGORIES.join(', ')}` });
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))
+      return res.status(400).json({ error: 'Hạn trả phải dạng YYYY-MM-DD' });
 
     const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
@@ -375,11 +377,34 @@ router.post('/:id/expenses', requireAuth, async (req, res) => {
     const entry = {
       expId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       category, desc: desc.trim(), amount: amt, hasReceipt: !!hasReceipt,
+      // Công nợ NCC: gắn nccId là khoản này vào sổ công nợ; paidNcc = đã thanh toán cho NCC chưa
+      nccId: nccId || null, dueDate: dueDate || null, paidNcc: false,
       by: req.user.username, name: req.user.name, at: now,
     };
     await dbAsync.update('bookings', { bookingId: req.params.id },
       { $set: { updatedAt: now }, $push: { expenses: entry } });
     res.status(201).json({ message: 'Đã ghi khoản chi', expense: entry });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/bookings/:id/expenses/:expId/paid ──────────
+// Đánh dấu đã/chưa thanh toán khoản chi cho NCC — CEO/KETOAN (finance:payment)
+router.patch('/:id/expenses/:expId/paid', ...requirePerm('finance:payment'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const entry = (booking.expenses || []).find(x => x.expId === req.params.expId);
+    if (!entry) return res.status(404).json({ error: 'Không tìm thấy khoản chi' });
+
+    const now = new Date().toISOString();
+    entry.paidNcc = req.body.paid !== false;
+    entry.paidNccBy = entry.paidNcc ? req.user.username : null;
+    entry.paidNccAt = entry.paidNcc ? now : null;
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { expenses: booking.expenses, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'NCC_PAID', bookingId: req.params.id,
+      from: entry.paidNcc ? null : 'PAID', to: `${entry.desc}|${entry.amount}`, by: req.user.username, at: now });
+    res.json({ message: entry.paidNcc ? 'Đã đánh dấu thanh toán NCC' : 'Đã bỏ đánh dấu thanh toán' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

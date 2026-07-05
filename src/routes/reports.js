@@ -116,6 +116,44 @@ router.get('/revenue', ...requirePerm('finance:read'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/reports/payables ─────────────────────────────
+// Sổ công nợ NCC: khoản chi gắn nccId chưa thanh toán, gom theo NCC, cảnh báo quá hạn (CEO/KETOAN)
+router.get('/payables', ...requirePerm('finance:read'), async (req, res) => {
+  try {
+    const [bookings, allSuppliers] = await Promise.all([
+      dbAsync.find('bookings', { status: { $ne: 'CANCELLED' } }),
+      dbAsync.find('suppliers', {}),
+    ]);
+    const supplierName = Object.fromEntries(allSuppliers.map(s => [s.nccId, s.name]));
+    const today = new Date().toISOString().slice(0, 10);
+    const in7days = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+    const byNcc = {};
+    let totalUnpaid = 0, overdueAmount = 0, overdueCount = 0, dueSoonAmount = 0;
+    for (const b of bookings) {
+      for (const e of b.expenses || []) {
+        if (!e.nccId || e.paidNcc) continue;
+        if (!byNcc[e.nccId]) byNcc[e.nccId] = { nccId: e.nccId,
+          name: supplierName[e.nccId] || e.nccId, unpaid: 0, overdue: 0, items: [] };
+        const g = byNcc[e.nccId];
+        const isOverdue = !!e.dueDate && e.dueDate < today;
+        g.unpaid += e.amount;
+        if (isOverdue) { g.overdue += e.amount; overdueAmount += e.amount; overdueCount++; }
+        if (e.dueDate && e.dueDate >= today && e.dueDate <= in7days) dueSoonAmount += e.amount;
+        totalUnpaid += e.amount;
+        g.items.push({ bookingId: b.bookingId, product: b.product, expId: e.expId,
+          category: e.category, desc: e.desc, amount: e.amount, dueDate: e.dueDate,
+          overdue: isOverdue, at: e.at });
+      }
+    }
+    const suppliers = Object.values(byNcc)
+      .map(g => ({ ...g, items: g.items.sort((a, b2) =>
+        String(a.dueDate || '9999').localeCompare(String(b2.dueDate || '9999'))) }))
+      .sort((a, b2) => b2.unpaid - a.unpaid);
+    res.json({ summary: { totalUnpaid, overdueAmount, overdueCount, dueSoonAmount }, suppliers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/reports/activity ─────────────────────────────
 // Audit log (giai đoạn 7 — Internal Audit): mọi thao tác trên hệ thống, CEO only
 router.get('/activity', requireAuth, async (req, res) => {

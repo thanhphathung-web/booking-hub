@@ -159,7 +159,9 @@ GET    /api/bookings/my-tasks    → {tasks, overdue, dueToday} — checklist it
 GET    /api/bookings/calendar    ?month=YYYY-MM → {items: [{bookingId, product, tourDate, endDate, days, status, assignedTo, pax}]}
                                  (days: từ product.durationDays, hoặc đoán "3N" trong tên, mặc định 1; trang "Lịch tour")
 PATCH  /api/bookings/:id/checklist/:code  body: {done, note?} — CEO/TPDH tick mọi item, role khác chỉ item của mình
-POST   /api/bookings/:id/expenses         body: {category, desc, amount, hasReceipt?}
+POST   /api/bookings/:id/expenses         body: {category, desc, amount, hasReceipt?, nccId?, dueDate?}
+                                          (gắn nccId → khoản chi vào sổ công nợ NCC, dueDate = hạn trả)
+PATCH  /api/bookings/:id/expenses/:expId/paid  body: {paid} — đánh dấu đã trả NCC (finance:payment)
 DELETE /api/bookings/:id/expenses/:expId  — người ghi hoặc CEO/TPDH/KETOAN
 POST   /api/bookings/:id/daily-report     body: {date?, summary, groupStatus, incidents?, supplierRating?}
 ```
@@ -238,6 +240,8 @@ GET /api/reports/post-analysis   ?from=&to= (lọc theo tourDate; CEO/KETOAN/TPD
 GET /api/reports/activity        ?bookingId=&type=&by=&limit= (CEO only) — audit log, trang "Audit Log" trên UI
 GET /api/reports/revenue         ?year= (finance:read — CEO/KETOAN) — doanh thu theo tháng khởi hành:
                                  {year, years, months[12]: {tours,pax,revenue,collected,pending,cost,profit}, totals}
+GET /api/reports/payables        (finance:read) — sổ công nợ NCC: khoản chi gắn nccId chưa paidNcc,
+                                 gom theo NCC + cảnh báo quá hạn/7 ngày; trang "Công nợ NCC" (nav KETOAN/CEO)
 ```
 Chỉ tính tour COMPLETED. Per tour: doanh thu, dự toán (costEstimate), thực chi (Σ expenses), chênh dự toán, lãi/lỗ, margin. byProduct gom theo productId. suppliers xếp hạng theo avgRating (chỉ NCC đã được chấm), <3★ cảnh báo. UI: trang "Post Analysis" + xuất CSV.
 
@@ -385,6 +389,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Backup tự động 02:00 qua email + tải thủ công + script khôi phục
 - [x] CRM khách hàng: gom theo SĐT, phân hạng VIP/Thân thiết/Mới, lịch sử + ghi chú chăm sóc
 - [x] Lịch tour calendar tháng + chống trùng lịch NVDH (409 + force override)
+- [x] Sổ công nợ NCC: khoản chi gắn NCC + hạn trả, gom theo NCC, cảnh báo quá hạn, KETOAN đánh dấu đã trả
 
 ## Tính năng chưa có (backlog)
 

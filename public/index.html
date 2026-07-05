@@ -125,6 +125,9 @@
         <a onclick="showPage('revenue')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
           <span>💰</span><span>Doanh thu</span>
         </a>
+        <a onclick="showPage('payables')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+          <span>💳</span><span>Công nợ NCC</span>
+        </a>
       </div>
       <div id="navReports" class="hidden">
         <a onclick="showPage('post-analysis')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
@@ -479,6 +482,14 @@
         <span id="auditCount" class="text-xs text-gray-400 ml-auto"></span>
       </div>
       <div id="auditTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- PAYABLES PAGE -->
+    <div id="page-payables" class="page">
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">💳 Công nợ NCC</h2>
+      <p class="text-xs text-gray-400 mb-4">Khoản chi gắn NCC chưa thanh toán, gom từ sổ chi của các booking. Ghi nợ mới: vào booking → Sổ chi phí → chọn NCC + hạn trả.</p>
+      <div class="grid grid-cols-3 gap-4 mb-6" id="payCards"></div>
+      <div id="payablesList" class="space-y-4"></div>
     </div>
 
     <!-- POST ANALYSIS PAGE -->
@@ -888,6 +899,7 @@ function showPage(page) {
   if (page === 'audit')      loadAudit();
   if (page === 'customers')  loadCustomers();
   if (page === 'calendar')   loadCalendar();
+  if (page === 'payables')   loadPayables();
   if (page === 'new-booking') fillProductSelect();
   if (page === 'checklist')  loadChecklist();
   if (page === 'cl-summary') loadClSummary();
@@ -1663,13 +1675,25 @@ function renderExpenses(b) {
       <h4 class="font-semibold text-gray-700 mb-3">💸 Sổ chi phí thực tế</h4>
       <div class="space-y-1.5 mb-3 max-h-52 overflow-y-auto pr-1">
         ${!ex.length ? '<p class="text-gray-400 text-sm">Chưa có khoản chi nào</p>'
-          : ex.map(e => `
-          <div class="flex items-center gap-2 text-sm py-1 border-b border-gray-50 last:border-0">
-            <span class="text-xs flex-shrink-0">${EXPENSE_LABELS[e.category] || e.category}</span>
-            <span class="flex-1 truncate text-gray-700" title="${esc(e.desc)}">${esc(e.desc)}${e.hasReceipt ? ' 🧾' : ''}</span>
-            <span class="font-semibold whitespace-nowrap">${Number(e.amount).toLocaleString('vi-VN')}đ</span>
-            ${canDelete(e) ? `<button onclick="delExpense('${b.bookingId}','${e.expId}')" class="text-red-400 hover:text-red-600 text-xs flex-shrink-0" title="Xoá">✕</button>` : ''}
-          </div>`).join('')}
+          : ex.map(e => {
+            const ncc = e.nccId ? SUPPLIERS_LIST.find(s => s.nccId === e.nccId) : null;
+            const debtInfo = e.nccId
+              ? (e.paidNcc ? '<span class="text-xs text-green-600">✓ đã trả NCC</span>'
+                : `<span class="text-xs ${e.dueDate && e.dueDate < new Date().toISOString().slice(0,10) ? 'text-red-600 font-bold' : 'text-orange-500'}">nợ ${ncc ? esc(ncc.name) : ''}${e.dueDate ? ' · hạn ' + e.dueDate : ''}</span>`)
+              : '';
+            return `
+          <div class="py-1 border-b border-gray-50 last:border-0">
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-xs flex-shrink-0">${EXPENSE_LABELS[e.category] || e.category}</span>
+              <span class="flex-1 truncate text-gray-700" title="${esc(e.desc)}">${esc(e.desc)}${e.hasReceipt ? ' 🧾' : ''}</span>
+              <span class="font-semibold whitespace-nowrap">${Number(e.amount).toLocaleString('vi-VN')}đ</span>
+              ${canDelete(e) ? `<button onclick="delExpense('${b.bookingId}','${e.expId}')" class="text-red-400 hover:text-red-600 text-xs flex-shrink-0" title="Xoá">✕</button>` : ''}
+            </div>
+            ${debtInfo ? `<div class="flex items-center gap-2 pl-5">${debtInfo}
+              ${!e.paidNcc && ['CEO','KETOAN'].includes(USER.role) ? `<button onclick="markExpensePaid('${b.bookingId}','${e.expId}')" class="text-xs text-green-700 hover:underline">✓ đánh dấu đã trả</button>` : ''}
+            </div>` : ''}
+          </div>`;
+          }).join('')}
       </div>
       <div class="border-t pt-2 space-y-1 text-sm">
         <div class="flex justify-between"><span class="text-gray-500">Doanh thu</span><strong>${Number(b.payment.amount||0).toLocaleString('vi-VN')}đ</strong></div>
@@ -1690,6 +1714,11 @@ function renderExpenses(b) {
         <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
           <input id="ex-receipt" type="checkbox" class="w-4 h-4"/> Có hoá đơn
         </label>
+        <select id="ex-ncc" class="input text-sm" title="Gắn NCC → vào sổ công nợ">
+          <option value="">— NCC (nếu là công nợ) —</option>
+          ${SUPPLIERS_LIST.map(s => `<option value="${s.nccId}">${esc(s.name)}</option>`).join('')}
+        </select>
+        <input id="ex-due" type="date" class="input text-sm" title="Hạn thanh toán cho NCC"/>
         <button onclick="addExpense('${b.bookingId}')"
           class="col-span-2 bg-teal-700 text-white py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 transition">+ Ghi khoản chi</button>
       </div>
@@ -1706,6 +1735,8 @@ async function addExpense(bookingId) {
       category: document.getElementById('ex-cat').value,
       desc, amount,
       hasReceipt: document.getElementById('ex-receipt').checked,
+      nccId: document.getElementById('ex-ncc').value || null,
+      dueDate: document.getElementById('ex-due').value || null,
     })});
     toast('Đã ghi khoản chi');
     showDetail(bookingId);
@@ -2189,6 +2220,61 @@ async function loadAudit() {
           </tr>`).join('')}
         </tbody></table></div>`;
   } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+// ── Công nợ NCC ───────────────────────────────────────────
+async function markExpensePaid(bookingId, expId) {
+  try {
+    const r = await api(`/bookings/${bookingId}/expenses/${expId}/paid`, { method:'PATCH', body: JSON.stringify({paid:true}) });
+    toast(r.message);
+    // refresh trang đang mở
+    if (document.getElementById('page-payables').classList.contains('active')) loadPayables();
+    else showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function loadPayables() {
+  const listEl = document.getElementById('payablesList');
+  listEl.innerHTML = '<div class="skeleton h-32 w-full rounded-xl"></div>';
+  try {
+    const { summary, suppliers } = await api('/reports/payables');
+    document.getElementById('payCards').innerHTML = [
+      { label:'Tổng nợ chưa trả', value: summary.totalUnpaid, color:'bg-blue-900', icon:'💳' },
+      { label:`Quá hạn (${summary.overdueCount} khoản)`, value: summary.overdueAmount, color: summary.overdueAmount > 0 ? 'bg-red-600' : 'bg-gray-400', icon:'⏰' },
+      { label:'Đến hạn trong 7 ngày', value: summary.dueSoonAmount, color:'bg-orange-500', icon:'📅' },
+    ].map(c => `
+      <div class="${c.color} text-white rounded-xl p-5">
+        <div class="text-2xl mb-1">${c.icon}</div>
+        <div class="text-xl font-bold">${Number(c.value).toLocaleString('vi-VN')}đ</div>
+        <div class="text-xs opacity-80 mt-1">${c.label}</div>
+      </div>`).join('');
+
+    if (!suppliers.length) {
+      listEl.innerHTML = '<div class="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400 text-sm">🎉 Không có công nợ NCC nào chưa trả</div>';
+      return;
+    }
+    const canPay = ['CEO','KETOAN'].includes(USER.role);
+    listEl.innerHTML = suppliers.map(s => `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 bg-gray-50 border-b">
+          <div class="font-bold text-gray-800">${esc(s.name)}
+            ${s.overdue > 0 ? `<span class="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">quá hạn ${Number(s.overdue).toLocaleString('vi-VN')}đ</span>` : ''}
+          </div>
+          <div class="font-bold text-red-600">${Number(s.unpaid).toLocaleString('vi-VN')}đ</div>
+        </div>
+        <div class="divide-y divide-gray-50">
+          ${s.items.map(it => `
+            <div class="flex items-center gap-3 px-5 py-2.5 text-sm ${it.overdue ? 'bg-red-50' : ''}">
+              <a onclick="showDetail('${it.bookingId}')" class="font-mono text-xs text-blue-600 hover:underline cursor-pointer flex-shrink-0">${it.bookingId}</a>
+              <span class="flex-1 truncate" title="${esc(it.desc)} — ${esc(it.product)}">${esc(it.desc)} <span class="text-gray-400">· ${esc(it.product)}</span></span>
+              <span class="text-xs whitespace-nowrap ${it.overdue ? 'text-red-600 font-bold' : 'text-gray-500'}">${it.dueDate ? (it.overdue ? '⏰ quá hạn ' : 'hạn ') + it.dueDate : 'chưa đặt hạn'}</span>
+              <span class="font-semibold whitespace-nowrap">${Number(it.amount).toLocaleString('vi-VN')}đ</span>
+              ${canPay ? `<button onclick="markExpensePaid('${it.bookingId}','${it.expId}')"
+                class="text-xs bg-green-700 text-white px-2.5 py-1 rounded-lg hover:bg-green-600 flex-shrink-0">✓ Đã trả</button>` : ''}
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  } catch(e) { listEl.innerHTML = `<p class="text-red-600 text-sm">${esc(e.message)}</p>`; }
 }
 
 // ── Lịch tour (calendar) ──────────────────────────────────

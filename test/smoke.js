@@ -206,6 +206,26 @@ async function login(username, password) {
       check('tìm theo SĐT', r.data?.customers?.length === 1);
     }
 
+    console.log('\n— Công nợ NCC —');
+    {
+      // Khoản chi gắn NCC + hạn trả quá khứ → công nợ quá hạn
+      r = await req('POST', `/api/bookings/${bid}/expenses`, { token: ceo, body: {
+        category: 'KHACHSAN', desc: 'No khach san test', amount: 3000000,
+        nccId: nccId, dueDate: '2020-01-01' } });
+      check('ghi khoản chi gắn NCC + hạn trả', r.status === 201);
+      const debtExpId = r.data.expense.expId;
+      r = await req('GET', '/api/reports/payables', { token: ketoan });
+      const nccGroup = r.data?.suppliers?.find(s => s.nccId === nccId);
+      check('sổ công nợ gom theo NCC, đúng số tiền', nccGroup?.unpaid === 3000000, JSON.stringify(nccGroup));
+      check('cảnh báo quá hạn (hạn 2020)', r.data?.summary?.overdueCount === 1 && nccGroup?.overdue === 3000000);
+      r = await req('PATCH', `/api/bookings/${bid}/expenses/${debtExpId}/paid`, { token: nvdh, body: { paid: true } });
+      check('NVDH đánh dấu đã trả → 403', r.status === 403);
+      r = await req('PATCH', `/api/bookings/${bid}/expenses/${debtExpId}/paid`, { token: ketoan, body: { paid: true } });
+      check('KETOAN đánh dấu đã trả → OK', r.status === 200);
+      r = await req('GET', '/api/reports/payables', { token: ketoan });
+      check('trả xong biến khỏi sổ công nợ', !r.data?.suppliers?.find(s => s.nccId === nccId));
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');
