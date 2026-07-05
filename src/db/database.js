@@ -1,4 +1,5 @@
-const Datastore = require('nedb');
+// @seald-io/nedb: fork được bảo trì của nedb, API tương thích, vá lỗ hổng underscore
+const Datastore = require('@seald-io/nedb');
 const path = require('path');
 
 // DATA_DIR env cho phép test chạy trên thư mục tạm; mặc định ./data như cũ

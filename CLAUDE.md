@@ -26,7 +26,7 @@ Hệ sinh thái 3 công ty:
 
 ```
 Backend:  Node.js + Express 5
-Database: NeDB (pure JS, file-based NoSQL, MongoDB-like API)
+Database: NeDB qua @seald-io/nedb (fork được bảo trì — pure JS, file-based NoSQL, MongoDB-like API)
 Auth:     JWT (jsonwebtoken) + bcryptjs
 Frontend: Single HTML file (SPA) + Tailwind CSS CDN
 ```
@@ -186,7 +186,9 @@ GET    /api/digest/preview   → xem nội dung digest sẽ gửi (không gửi 
 POST   /api/digest/send      → gửi digest ngay để test, không đợi cron
 ```
 
-**Digest nhắc việc:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 tin tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua **2 kênh độc lập**: email (`src/services/mailer.js`, nodemailer, SMTP trong .env) và Zalo OA (`src/services/zalo.js`). Kênh nào chưa cấu hình / user chưa có địa chỉ → skip êm, kết quả trả per-user per-channel.
+**Digest nhắc việc:** cron 07:30 sáng (Asia/Ho_Chi_Minh) trong `server.js` → `src/services/digest.js` gom việc chưa xong per user (dùng chung logic my-tasks trong `src/services/tasks.js`), soạn 1 tin tổng hợp (quá hạn / hôm nay / 3 ngày tới), gửi qua **2 kênh độc lập**: email (`src/services/mailer.js`) và Zalo OA (`src/services/zalo.js`). Kênh nào chưa cấu hình / user chưa có địa chỉ → skip êm, kết quả trả per-user per-channel.
+
+⚠️ **Email trên Railway:** gói Trial chặn outbound SMTP (cổng 587/465 timeout) — Gmail App Password chỉ dùng được khi nâng gói Hobby+. Mailer hỗ trợ 2 đường: `RESEND_API_KEY` (ưu tiên, HTTPS — không bị chặn) hoặc SMTP. Server đã ép `dns ipv4first` (Railway không route IPv6 egress).
 
 ### Zalo OA (`src/services/zalo.js` + `/api/zalo`)
 ```
