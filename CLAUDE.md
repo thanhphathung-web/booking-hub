@@ -177,6 +177,14 @@ PATCH  /api/users/:username/toggle    → khoá/mở khoá
 DELETE /api/users/:username
 ```
 
+### Tra cứu công khai (khách hàng)
+```
+POST /api/lookup   body: {bookingId, phone} — KHÔNG cần auth; rate limit 20 lượt/15min/IP
+                   → chỉ trường an toàn: product, tourDate, pax, statusLabel VN, payment, timeline
+                   (tuyệt đối không thêm checklist/expenses/notes/costEstimate vào response này)
+```
+UI: trang `/tracuu` (public/tracuu.html — file riêng, không dính SPA admin). CS gửi link + mã đơn cho khách.
+
 ### Webhook (website CTY2)
 ```
 POST /api/webhook/bookings   header: X-API-Key = WEBHOOK_API_KEY (.env; không set = endpoint tắt 503)
@@ -390,6 +398,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] CRM khách hàng: gom theo SĐT, phân hạng VIP/Thân thiết/Mới, lịch sử + ghi chú chăm sóc
 - [x] Lịch tour calendar tháng + chống trùng lịch NVDH (409 + force override)
 - [x] Sổ công nợ NCC: khoản chi gắn NCC + hạn trả, gom theo NCC, cảnh báo quá hạn, KETOAN đánh dấu đã trả
+- [x] Trang tra cứu công khai /tracuu cho khách (mã đơn + SĐT, rate limit, chỉ trường an toàn)
 
 ## Tính năng chưa có (backlog)
 

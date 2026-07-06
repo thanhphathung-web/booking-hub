@@ -39,10 +39,15 @@ app.use('/api/zalo',       require('./src/routes/zalo'));
 app.use('/api/webhook',    require('./src/routes/webhook'));
 app.use('/api/backup',     require('./src/routes/backup'));
 app.use('/api/customers',  require('./src/routes/customers'));
+app.use('/api/lookup',     require('./src/routes/lookup'));
 
 // Health check
 app.get('/api/health', (req, res) =>
   res.json({ status: 'OK', version: require('./package.json').version, time: new Date().toISOString() }));
+
+// Trang tra cứu công khai cho khách (đường dẫn đẹp, không cần .html)
+app.get('/tracuu', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'tracuu.html')));
 
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>

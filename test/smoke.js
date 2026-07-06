@@ -243,6 +243,20 @@ async function login(username, password) {
       check('gửi backup khi chưa cấu hình email → skip êm', r.status === 200 && r.data?.sent === false);
     }
 
+    console.log('\n— Tra cứu công khai cho khách —');
+    {
+      r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0900 000 001' } });
+      check('tra cứu đúng mã + SĐT (khác định dạng) → 200', r.status === 200, JSON.stringify(r.data));
+      check('chỉ trả trường an toàn — không lộ checklist/expenses/costEstimate',
+        r.data?.booking && !('checklist' in r.data.booking) && !('expenses' in r.data.booking)
+        && !('costEstimate' in r.data.booking) && !('notes' in r.data.booking));
+      check('có statusLabel tiếng Việt + timeline', !!r.data?.booking?.statusLabel && Array.isArray(r.data?.booking?.timeline));
+      r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0999999999' } });
+      check('SĐT sai → 404', r.status === 404);
+      r = await req('GET', '/tracuu');
+      check('trang /tracuu phục vụ được', r.status === 200);
+    }
+
     console.log('\n— Audit log + rate limit —');
     r = await req('GET', '/api/reports/activity', { token: ceo });
     check('audit log có bản ghi', (r.data?.items || []).length > 0);
