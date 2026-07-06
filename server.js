@@ -49,6 +49,9 @@ app.get('/api/health', (req, res) =>
 app.get('/tracuu', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'tracuu.html')));
 
+app.get('/nvdh', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'nvdh.html')));
+
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'index.html')));

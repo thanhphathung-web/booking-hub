@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>NVDH — Booking Hub</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body { background: #f0f4f8; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .phase-hdr { cursor: pointer; user-select: none; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- LOGIN -->
+<div id="page-login" class="page active min-h-screen flex flex-col items-center justify-center p-6">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">🗺️</div>
+      <h1 class="text-2xl font-bold text-gray-800">Booking Hub</h1>
+      <p class="text-gray-500 text-sm mt-1">Dành cho Nhân viên điều hành</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+        <input id="login-user" type="text" autocomplete="username" placeholder="username"
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+        <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••"
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div id="login-err" class="hidden text-red-600 text-sm text-center"></div>
+      <button onclick="doLogin()" class="w-full bg-blue-900 text-white py-3.5 rounded-xl font-bold text-base hover:bg-blue-800 transition">
+        Đăng nhập
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN — danh sách tour -->
+<div id="page-main" class="page">
+  <div class="bg-blue-900 text-white px-4 pt-10 pb-4 sticky top-0 z-10">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs opacity-70">Xin chào,</p>
+        <h1 class="font-bold text-lg" id="main-name"></h1>
+      </div>
+      <button onclick="doLogout()" class="text-xs opacity-70 hover:opacity-100 border border-white border-opacity-30 px-3 py-1.5 rounded-full">Đăng xuất</button>
+    </div>
+    <p class="text-xs opacity-60 mt-1" id="main-date"></p>
+  </div>
+
+  <div class="p-4">
+    <h2 class="font-bold text-gray-700 mb-3">🚌 Tour của tôi</h2>
+    <div id="my-tours-list"><p class="text-gray-400 text-sm text-center py-8">Đang tải…</p></div>
+  </div>
+
+  <div class="p-4 pt-0">
+    <h2 class="font-bold text-gray-700 mb-3">🎯 Việc cần làm hôm nay</h2>
+    <div id="my-tasks-list"><p class="text-gray-400 text-sm text-center py-4">Đang tải…</p></div>
+  </div>
+
+  <div class="h-8"></div>
+</div>
+
+<!-- DETAIL — checklist per booking -->
+<div id="page-detail" class="page">
+  <div class="bg-blue-900 text-white px-4 pt-10 pb-4 sticky top-0 z-10">
+    <button onclick="showMain()" class="text-sm opacity-70 hover:opacity-100 mb-2 flex items-center gap-1">← Quay lại</button>
+    <h2 class="font-bold text-lg truncate" id="detail-product"></h2>
+    <p class="text-xs opacity-70 mt-0.5" id="detail-meta"></p>
+  </div>
+  <div id="detail-body" class="p-4 space-y-3"></div>
+  <div class="h-8"></div>
+</div>
+
+<!-- TICK NOTE MODAL -->
+<div id="tick-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
+  <div class="bg-white rounded-t-2xl w-full max-w-lg p-6 pb-8">
+    <h3 class="font-bold text-gray-800 mb-1 text-lg">✅ Xác nhận hoàn thành</h3>
+    <p id="tick-modal-label" class="text-sm text-gray-500 mb-4 font-mono"></p>
+    <textarea id="tick-modal-note" rows="3" placeholder="Ghi chú (tùy chọn): số xe, số phòng, số xác nhận…"
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"></textarea>
+    <div class="flex gap-3">
+      <button onclick="confirmTick()" class="flex-1 bg-green-600 text-white py-4 rounded-xl font-bold text-base">✓ Xác nhận</button>
+      <button onclick="cancelTick()" class="flex-1 border border-gray-300 text-gray-600 py-4 rounded-xl font-bold text-base">Hủy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+let TOKEN = localStorage.getItem('nvdh_token') || '';
+let USER  = JSON.parse(localStorage.getItem('nvdh_user') || 'null');
+let TICK_PENDING = null;
+let CURRENT_BK   = null;
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+
+async function api(path, opts={}) {
+  const r = await fetch(BASE + '/api' + path, {
+    ...opts, headers: { 'Content-Type':'application/json', Authorization: 'Bearer '+TOKEN, ...(opts.headers||{}) }
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+function showMain() { showPage('main'); loadMain(); }
+
+// ── Login ──────────────────────────────────────────────────
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-err');
+  errEl.classList.add('hidden');
+  try {
+    const { token, user } = await fetch('/api/auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; }));
+    TOKEN = token; USER = user;
+    localStorage.setItem('nvdh_token', token);
+    localStorage.setItem('nvdh_user', JSON.stringify(user));
+    enterApp();
+  } catch(e) {
+    errEl.textContent = e.message || 'Đăng nhập thất bại';
+    errEl.classList.remove('hidden');
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('nvdh_token'); localStorage.removeItem('nvdh_user');
+  TOKEN = ''; USER = null;
+  showPage('login');
+}
+
+function enterApp() {
+  document.getElementById('main-name').textContent = USER.name || USER.username;
+  const now = new Date();
+  document.getElementById('main-date').textContent = now.toLocaleDateString('vi-VN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  showPage('main');
+  loadMain();
+}
+
+// ── Main ───────────────────────────────────────────────────
+async function loadMain() {
+  await Promise.all([loadMyTours(), loadMyTasksPanel()]);
+}
+
+async function loadMyTours() {
+  const el = document.getElementById('my-tours-list');
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const { bookings } = await api('/bookings?limit=50');
+    let mine = bookings.filter(b => !['COMPLETED','CANCELLED'].includes(b.status));
+    if (['NVDH'].includes(USER.role)) mine = mine.filter(b => b.assignedTo === USER.username);
+    if (!mine.length) { el.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">Không có tour đang chạy</p>'; return; }
+    mine.sort((a,b) => a.tourDate.localeCompare(b.tourDate));
+    const statusColor = { NEW:'bg-gray-100 text-gray-600', CONFIRMED:'bg-blue-100 text-blue-700', IN_PROGRESS:'bg-green-100 text-green-700' };
+    const statusLabel = { NEW:'Mới', CONFIRMED:'Đã xác nhận', IN_PROGRESS:'Đang đi' };
+    el.innerHTML = mine.map(b => {
+      const cl = b.checklist || [];
+      const done = cl.filter(i=>i.done).length;
+      const total = cl.length;
+      const ovd = cl.filter(i=>!i.done&&i.deadline&&i.deadline<today).length;
+      const pct = total?Math.round(done/total*100):0;
+      return `<div onclick="loadDetail('${b.bookingId}')"
+        class="bg-white rounded-2xl p-4 mb-3 shadow-sm border-l-4 ${b.status==='IN_PROGRESS'?'border-green-500':ovd?'border-red-400':'border-blue-200'} active:bg-gray-50 cursor-pointer">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-gray-800 truncate">${esc(b.product)}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${b.bookingId} · KH <strong>${b.tourDate}</strong> · ${b.adults}NL${b.children?'+'+b.children+'TE':''}</p>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[b.status]||'bg-gray-100 text-gray-600'}">${statusLabel[b.status]||b.status}</span>
+        </div>
+        ${b.specialReqs?`<p class="text-xs text-orange-600 mb-2">⚠ ${esc(b.specialReqs)}</p>`:''}
+        ${total?`<div class="flex items-center gap-2">
+          ${ovd?`<span class="text-xs text-red-600 font-bold">⏰ ${ovd} quá hạn</span>`:''}
+          <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full ${pct===100?'bg-green-500':ovd?'bg-red-400':'bg-blue-500'}" style="width:${pct}%"></div></div>
+          <span class="text-xs text-gray-500">${done}/${total}</span>
+        </div>`:''}
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<p class="text-red-500 text-sm">${e.message}</p>`; }
+}
+
+async function loadMyTasksPanel() {
+  const el = document.getElementById('my-tasks-list');
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const { tasks, overdue } = await api('/bookings/my-tasks');
+    const todayTasks = tasks.filter(t => t.dueToday || t.overdue);
+    if (!todayTasks.length) { el.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Không có việc đến hạn hôm nay 🎉</p>'; return; }
+    const phaseColor = { BOOKING:'bg-blue-100 text-blue-700', PREOPS:'bg-yellow-100 text-yellow-800', OPS:'bg-green-100 text-green-700', POSTOPS:'bg-purple-100 text-purple-700' };
+    el.innerHTML = todayTasks.map(t => `
+      <div class="bg-white rounded-2xl p-4 mb-2 shadow-sm ${t.overdue?'border-l-4 border-red-400':''}">
+        <div class="flex items-start gap-3">
+          <button onclick="openTick('${t.bookingId}','${t.code}','${esc(t.title).replace(/'/g,'&#39;')}')"
+            class="flex-shrink-0 w-8 h-8 rounded-full border-2 border-gray-300 hover:border-green-500 active:bg-green-50 flex items-center justify-center transition mt-0.5"></button>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800">${esc(t.title)}</p>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1">
+              <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">${t.code}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded ${phaseColor[t.phase]||'bg-gray-100 text-gray-600'}">${t.phase}</span>
+              <span class="text-xs ${t.overdue?'text-red-600 font-bold':'text-gray-400'}">${t.overdue?'⏰ QUÁ HẠN':'📌 Hôm nay'}</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-1 truncate">📋 ${t.bookingId} · ${esc(t.product)}</p>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="text-red-500 text-sm">${e.message}</p>`; }
+}
+
+// ── Detail ─────────────────────────────────────────────────
+async function loadDetail(bookingId) {
+  showPage('detail');
+  document.getElementById('detail-product').textContent = '⏳ Đang tải…';
+  document.getElementById('detail-body').innerHTML = '';
+  try {
+    const { booking: b } = await api('/bookings/' + bookingId);
+    CURRENT_BK = b;
+    document.getElementById('detail-product').textContent = b.product;
+    document.getElementById('detail-meta').textContent = b.bookingId + ' · KH ' + b.tourDate + ' · ' + b.adults + 'NL' + (b.children?'+'+b.children+'TE':'');
+
+    const cl = b.checklist || [];
+    const today = new Date().toISOString().slice(0,10);
+    const PHASES = ['BOOKING','PREOPS','OPS','POSTOPS'];
+    const PLABEL = { BOOKING:'📋 Xác nhận đơn', PREOPS:'🛠 Chuẩn bị', OPS:'🚌 Trong tour', POSTOPS:'📊 Sau tour' };
+    const PCOLOR = { BOOKING:'border-blue-300 bg-blue-50', PREOPS:'border-yellow-300 bg-yellow-50', OPS:'border-green-300 bg-green-50', POSTOPS:'border-purple-300 bg-purple-50' };
+    const PHDR   = { BOOKING:'bg-blue-100 text-blue-900', PREOPS:'bg-yellow-100 text-yellow-900', OPS:'bg-green-100 text-green-900', POSTOPS:'bg-purple-100 text-purple-900' };
+
+    const canTick = i => ['CEO','TPDH'].includes(USER.role) || i.role === USER.role;
+
+    let html = '';
+    // Customer info
+    html += `<div class="bg-white rounded-2xl p-4 shadow-sm">
+      <h3 class="font-bold text-gray-700 mb-3">👤 Trưởng đoàn</h3>
+      <p class="font-semibold">${esc(b.customer.name)}</p>
+      <a href="tel:${b.customer.phone}" class="text-blue-600 font-bold text-lg">📞 ${b.customer.phone}</a>
+      ${b.specialReqs ? `<p class="mt-2 text-sm text-orange-600 bg-orange-50 rounded-xl p-3">⚠ ${esc(b.specialReqs)}</p>` : ''}
+    </div>`;
+
+    // Checklist phases
+    PHASES.forEach(p => {
+      const items = cl.filter(i => i.phase === p);
+      if (!items.length) return;
+      const done = items.filter(i=>i.done).length;
+      const ovd  = items.filter(i=>!i.done&&i.deadline&&i.deadline<today).length;
+      const allDone = done === items.length;
+      const pid = 'mob-phase-' + p;
+      html += `<div class="border ${PCOLOR[p]} rounded-2xl overflow-hidden shadow-sm">
+        <div class="phase-hdr flex items-center justify-between px-4 py-3.5 ${PHDR[p]}" onclick="toggleMobPhase('${pid}')">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-base">${PLABEL[p]}</span>
+            ${ovd?`<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">⚠${ovd}</span>`:''}
+            ${allDone?`<span class="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✓</span>`:''}
+          </div>
+          <span class="font-bold">${done}/${items.length}</span>
+        </div>
+        <div id="${pid}" class="${allDone?'hidden':''}">
+          ${items.map(i => {
+            const ovd1 = !i.done&&i.deadline&&i.deadline<today;
+            const tick = canTick(i);
+            return `<div class="flex items-start gap-3 px-4 py-3.5 border-t border-white border-opacity-60 ${i.done?'bg-gray-50 opacity-60':ovd1?'bg-red-50':'bg-white'}">
+              <button ${tick&&!i.done?`onclick="openTick('${b.bookingId}','${i.code}','${esc(i.title).replace(/'/g,'&#39;')}')"`:i.done&&tick?`onclick="untick('${b.bookingId}','${i.code}')"`:''}
+                class="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition
+                  ${i.done?'bg-green-500 border-green-500 text-white':tick?'border-gray-300 active:bg-green-50':'border-gray-200 opacity-30'}" style="${!tick?'pointer-events:none':''}">
+                ${i.done?'✓':''}</button>
+              <div class="flex-1 min-w-0 pt-0.5">
+                <p class="text-sm font-medium ${i.done?'line-through text-gray-400':'text-gray-800'}">${esc(i.title)}</p>
+                <p class="text-xs text-gray-400 mt-0.5">${i.role} · ${i.done?(i.doneAt?new Date(i.doneAt).toLocaleDateString('vi-VN'):'Xong'):(i.deadline?'Hạn '+i.deadline:'Trong tour')}${ovd1?' · ⏰ QUÁ HẠN':''}</p>
+                ${i.note?`<p class="text-xs text-blue-600 mt-0.5">📝 ${esc(i.note)}</p>`:''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    });
+
+    document.getElementById('detail-body').innerHTML = html;
+  } catch(e) {
+    document.getElementById('detail-body').innerHTML = `<p class="text-red-500 p-4">${e.message}</p>`;
+  }
+}
+
+function toggleMobPhase(pid) {
+  const el = document.getElementById(pid);
+  if (el) el.classList.toggle('hidden');
+}
+
+// ── Tick ───────────────────────────────────────────────────
+function openTick(bookingId, code, title) {
+  TICK_PENDING = { bookingId, code };
+  document.getElementById('tick-modal-label').textContent = code + ' — ' + title;
+  document.getElementById('tick-modal-note').value = '';
+  document.getElementById('tick-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('tick-modal-note').focus(), 100);
+}
+
+function cancelTick() {
+  TICK_PENDING = null;
+  document.getElementById('tick-modal').classList.add('hidden');
+}
+
+async function confirmTick() {
+  if (!TICK_PENDING) return;
+  const { bookingId, code } = TICK_PENDING;
+  const note = document.getElementById('tick-modal-note').value.trim();
+  cancelTick();
+  try {
+    await api('/bookings/' + bookingId + '/checklist/' + code, {
+      method:'PATCH', body: JSON.stringify({ done: true, note: note||undefined })
+    });
+    loadDetail(bookingId);
+    loadMyTasksPanel();
+  } catch(e) { alert(e.message); }
+}
+
+async function untick(bookingId, code) {
+  try {
+    await api('/bookings/' + bookingId + '/checklist/' + code, {
+      method:'PATCH', body: JSON.stringify({ done: false })
+    });
+    loadDetail(bookingId);
+  } catch(e) { alert(e.message); }
+}
+
+// ── Init ───────────────────────────────────────────────────
+(async () => {
+  if (TOKEN) {
+    try {
+      const { user } = await api('/auth/me');
+      USER = user;
+      localStorage.setItem('nvdh_user', JSON.stringify(user));
+      enterApp();
+    } catch(e) { TOKEN = ''; localStorage.removeItem('nvdh_token'); }
+  }
+})();
+</script>
+</body>
+</html>

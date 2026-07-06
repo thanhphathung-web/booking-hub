@@ -194,6 +194,15 @@
         <div id="myTasksList"></div>
       </div>
 
+      <!-- Tour sắp khởi hành -->
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-gray-700">🚀 Tour sắp khởi hành</h3>
+          <a onclick="showPage('opsboard')" class="text-xs text-blue-700 hover:underline cursor-pointer">Xem Ops Board →</a>
+        </div>
+        <div id="dash-upcoming"><p class="text-gray-400 text-sm">Đang tải…</p></div>
+      </div>
+
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h3 class="font-semibold text-gray-700 mb-4">Booking gần nhất</h3>
         <div id="recentBookings"></div>
@@ -396,11 +405,19 @@
         <h2 class="text-2xl font-bold text-gray-800">🎯 Ops Board — Bảng điều hành tour</h2>
         <button onclick="loadOpsBoard()" class="border border-gray-300 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50">🔄 Refresh</button>
       </div>
-      <div class="flex gap-2 flex-wrap mb-4" id="ob-filter-bar">
+      <div class="flex gap-2 flex-wrap mb-3" id="ob-filter-bar">
         <button onclick="filterOpsBoard('active')" data-ob="active" class="ob-filter-btn bg-blue-900 text-white text-xs px-3 py-1.5 rounded-full border border-blue-900 transition">Đang chạy</button>
         <button onclick="filterOpsBoard('soon')"   data-ob="soon"   class="ob-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 transition">🚀 Sắp khởi hành (7 ngày)</button>
         <button onclick="filterOpsBoard('attn')"   data-ob="attn"   class="ob-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 transition">⚠ Cần chú ý</button>
         <button onclick="filterOpsBoard('all')"    data-ob="all"    class="ob-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-gray-400 transition">Tất cả (kể cả xong/hủy)</button>
+      </div>
+      <div class="flex gap-3 mb-4 flex-wrap">
+        <input id="ob-search-input" type="text" placeholder="🔍 Tìm tour / mã đơn / khách…" oninput="renderOpsBoard()"
+          class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <select id="ob-nvdh-select" onchange="renderOpsBoard()"
+          class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+          <option value="">Tất cả NVDH</option>
+        </select>
       </div>
       <div id="opsboard-table"><p class="text-gray-400 text-sm py-8 text-center">Đang tải…</p></div>
     </div>
@@ -619,6 +636,20 @@
     </div>
 
   </main>
+</div>
+
+<!-- Tick Note Modal -->
+<div id="tick-note-modal" class="hidden fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+    <h3 class="font-bold text-gray-800 mb-1">✅ Đánh dấu hoàn thành</h3>
+    <p id="tick-note-label" class="text-sm text-gray-500 mb-3 font-mono"></p>
+    <textarea id="tick-note-input" rows="3" placeholder="Ghi chú (tùy chọn): số xác nhận, biển số xe, số phòng KS, tên tài xế…"
+      class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"></textarea>
+    <div class="flex gap-3">
+      <button onclick="confirmTickNote()" class="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 transition">✓ Xác nhận</button>
+      <button onclick="cancelTickNote()" class="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm hover:bg-gray-50 transition">Hủy</button>
+    </div>
+  </div>
 </div>
 
 <!-- MODALS -->
@@ -1034,6 +1065,33 @@ async function loadDashboard(days, from, to) {
             <td class="py-2.5"><button data-id="${b.bookingId}" onclick="showDetail(this.dataset.id)" class="text-blue-600 hover:underline text-xs">Chi tiết</button></td>
           </tr>`).join('')}
           </tbody></table></div>`;
+    // ── Tour sắp khởi hành widget ──
+    const todayStr = new Date().toISOString().slice(0,10);
+    const { bookings: ub } = await api('/bookings?limit=20&tourFrom=' + todayStr);
+    const upcoming = ub.filter(b => !['COMPLETED','CANCELLED'].includes(b.status)).slice(0,6);
+    const upEl = document.getElementById('dash-upcoming');
+    if (upEl) {
+      if (!upcoming.length) { upEl.innerHTML = '<p class="text-gray-400 text-sm">Không có tour nào sắp khởi hành</p>'; }
+      else upEl.innerHTML = upcoming.map(b => {
+        const cl = b.checklist || [];
+        const clDone = cl.filter(i=>i.done).length;
+        const clTotal = cl.length;
+        const clOvd = cl.filter(i=>!i.done && i.deadline && i.deadline < todayStr).length;
+        const clPct = clTotal ? Math.round(clDone/clTotal*100) : 0;
+        return `<div onclick="showDetail('${b.bookingId}')" class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer rounded-lg px-2 transition -mx-2">
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm text-gray-800 truncate">${esc(b.product)}</p>
+            <p class="text-xs text-gray-400">${b.bookingId} · ${b.adults}NL${b.children?'+'+b.children+'TE':''} · <strong class="${b.tourDate===todayStr?'text-orange-600':'text-gray-600'}">${b.tourDate}</strong></p>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            ${clOvd?`<span class="text-xs text-red-600 font-bold">⏰${clOvd}</span>`:''}
+            ${clTotal?`<div class="w-14 bg-gray-100 rounded-full h-1.5"><div class="h-1.5 rounded-full transition-all ${clPct===100?'bg-green-500':clOvd?'bg-red-400':'bg-blue-500'}" style="width:${clPct}%"></div></div>
+            <span class="text-xs text-gray-400 w-9 text-right">${clDone}/${clTotal}</span>`:''}
+            ${statusBadge(b.status)}
+          </div>
+        </div>`;
+      }).join('');
+    }
   } catch(e) { console.error(e); }
   loadMyTasks();
 }
@@ -1340,6 +1398,7 @@ async function showDetail(id) {
                 ${statusBadge(b.status)}
                 ${['CEO','TPDH','NVDH'].includes(USER.role) && !['COMPLETED','CANCELLED'].includes(b.status)
                   ? `<button onclick="openEditBooking()" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">✏️ Sửa</button>` : ''}
+                <button onclick="printTourDossier('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In Tour File</button>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3 text-sm">
@@ -1744,10 +1803,117 @@ function togglePhaseSection(pid) {
 }
 
 async function tickDetailItem(bookingId, code, isDone) {
+  if (isDone) {
+    // untick — no note needed
+    try { await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: false }) }); showDetail(bookingId); }
+    catch(e) { toast(e.message, 'error'); }
+    return;
+  }
+  openTickModal(bookingId, code, 'detail');
+}
+
+// ── Tick note modal ────────────────────────────────────────
+let TICK_PENDING = null;
+
+function openTickModal(bookingId, code, source) {
+  const title = source === 'detail'
+    ? (window._curBooking?.checklist?.find(i => i.code === code)?.title || code)
+    : (MY_TOUR_TASKS.find(t => t.bookingId === bookingId && t.code === code)?.title || code);
+  TICK_PENDING = { bookingId, code, source };
+  document.getElementById('tick-note-label').textContent = code + ' — ' + title;
+  document.getElementById('tick-note-input').value = '';
+  document.getElementById('tick-note-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('tick-note-input').focus(), 80);
+}
+
+function cancelTickNote() {
+  TICK_PENDING = null;
+  document.getElementById('tick-note-modal').classList.add('hidden');
+}
+
+async function confirmTickNote() {
+  if (!TICK_PENDING) return;
+  const { bookingId, code, source } = TICK_PENDING;
+  const note = document.getElementById('tick-note-input').value.trim();
+  cancelTickNote();
   try {
-    await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: !isDone }) });
-    showDetail(bookingId);
+    await api(`/bookings/${bookingId}/checklist/${code}`, {
+      method:'PATCH', body: JSON.stringify({ done: true, note: note || undefined })
+    });
+    toast(`✅ ${code} hoàn thành`);
+    if (source === 'detail') showDetail(bookingId);
+    else { await loadTourTasks(); refreshTaskBadge(); }
   } catch(e) { toast(e.message, 'error'); }
+}
+
+async function refreshTaskBadge() {
+  try {
+    const { overdue } = await api('/bookings/my-tasks');
+    const badge = document.getElementById('taskBadge');
+    if (badge) { if (overdue>0) { badge.textContent=overdue; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
+  } catch(e) {}
+}
+
+// ── Print Tour Dossier ────────────────────────────────────
+function printTourDossier(bookingId) {
+  const b = window._curBooking;
+  if (!b || b.bookingId !== bookingId) { toast('Không tìm thấy dữ liệu tour', 'error'); return; }
+  const cl = b.checklist || [];
+  const today = new Date().toISOString().slice(0,10);
+  const PHASES = ['BOOKING','PREOPS','OPS','POSTOPS'];
+  const PHASE_LABEL = { BOOKING:'1. Xác nhận đơn', PREOPS:'2. Chuẩn bị trước tour', OPS:'3. Trong tour', POSTOPS:'4. Sau tour' };
+
+  const clHtml = PHASES.map(p => {
+    const items = cl.filter(i => i.phase === p);
+    if (!items.length) return '';
+    return `<h3 style="font-size:11pt;margin:12px 0 4px;color:#1e3a5f">${PHASE_LABEL[p]}</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:9pt">
+      ${items.map(i => `<tr style="border-bottom:1px solid #eee">
+        <td style="width:20px;padding:3px 4px">${i.done?'☑':'☐'}</td>
+        <td style="width:48px;color:#666;padding:3px 4px;font-family:monospace">${i.code}</td>
+        <td style="padding:3px 4px;${i.done?'color:#aaa;text-decoration:line-through':''}">${i.title}</td>
+        <td style="width:60px;color:#888;font-size:8pt;padding:3px 4px">${i.role}</td>
+        <td style="width:80px;color:${!i.done&&i.deadline&&i.deadline<today?'#c00':'#888'};font-size:8pt;padding:3px 4px">${i.done?(i.doneAt?new Date(i.doneAt).toLocaleDateString('vi-VN'):'✓'):(i.deadline?'Hạn '+i.deadline:'Trong tour')}</td>
+        <td style="color:#555;font-size:8pt;padding:3px 4px">${i.note||''}</td>
+      </tr>`).join('')}
+    </table>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Tour File — ${b.bookingId}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:10pt;margin:20px;color:#222}
+    h1{font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px}
+    h2{font-size:11pt;color:#1e3a5f;margin:14px 0 6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .field{background:#f5f5f5;padding:6px 10px;border-radius:4px}
+    .label{font-size:8pt;color:#666;margin-bottom:2px}
+    .value{font-weight:bold}
+    .alert{background:#fff3cd;border:1px solid #ffc107;padding:6px 10px;border-radius:4px;margin-bottom:10px}
+    @media print{body{margin:10px}}
+  </style></head><body>
+  <h1>🗂 TOUR FILE — ${b.bookingId}</h1>
+  <div class="grid">
+    <div class="field"><div class="label">Tour</div><div class="value">${b.product}</div></div>
+    <div class="field"><div class="label">Ngày khởi hành</div><div class="value">${b.tourDate}</div></div>
+    <div class="field"><div class="label">Số khách</div><div class="value">${b.adults} người lớn${b.children?' + '+b.children+' trẻ em':''}</div></div>
+    <div class="field"><div class="label">NVDH</div><div class="value">${b.assignedTo||'Chưa phân công'}</div></div>
+    <div class="field"><div class="label">Trưởng đoàn</div><div class="value">${b.customer.name}</div></div>
+    <div class="field"><div class="label">SĐT liên hệ</div><div class="value">${b.customer.phone}</div></div>
+  </div>
+  ${b.specialReqs ? `<div class="alert">⚠ Yêu cầu đặc biệt: <strong>${b.specialReqs}</strong></div>` : ''}
+  ${b.type==='WELLNESS' ? `<div class="alert">💜 WELLNESS — Gói khám: ${b.wellness?.package||''} · NCC: ${b.wellness?.ncc||''}</div>` : ''}
+  <h2>✅ Checklist điều hành</h2>
+  ${clHtml || '<p style="color:#aaa">Chưa có checklist</p>'}
+  <p style="margin-top:20px;font-size:8pt;color:#aaa;border-top:1px solid #eee;padding-top:8px">
+    In lúc: ${new Date().toLocaleString('vi-VN')} · Booking Hub · ${b.bookingId}
+  </p>
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+  else toast('Trình duyệt chặn popup — vui lòng cho phép popup', 'error');
 }
 
 // ── Daily Tour Report ─────────────────────────────────────
@@ -2506,6 +2672,14 @@ async function loadOpsBoard() {
   try {
     const { bookings } = await api('/bookings?limit=100');
     OB_ALL_DATA = bookings;
+    // populate NVDH select
+    const nvdhs = [...new Set(bookings.map(b => b.assignedTo).filter(Boolean))].sort();
+    const sel = document.getElementById('ob-nvdh-select');
+    if (sel) {
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Tất cả NVDH</option>' +
+        nvdhs.map(n => `<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
+    }
     renderOpsBoard();
   } catch(e) { document.getElementById('opsboard-table').innerHTML = `<p class="text-red-500 text-sm">${e.message}</p>`; }
 }
@@ -2530,6 +2704,15 @@ function renderOpsBoard() {
   if (OB_FILTER === 'active') data = data.filter(b => !['COMPLETED','CANCELLED'].includes(b.status));
   else if (OB_FILTER === 'soon') data = data.filter(b => !['COMPLETED','CANCELLED'].includes(b.status) && b.tourDate >= today && b.tourDate <= in7d);
   else if (OB_FILTER === 'attn') data = data.filter(b => !['COMPLETED','CANCELLED'].includes(b.status) && obHasIssue(b, today));
+  // search + NVDH filter
+  const obSearch = (document.getElementById('ob-search-input')?.value || '').trim().toLowerCase();
+  const obNvdh   = document.getElementById('ob-nvdh-select')?.value || '';
+  if (obSearch) data = data.filter(b =>
+    b.bookingId.toLowerCase().includes(obSearch) ||
+    b.product.toLowerCase().includes(obSearch) ||
+    (b.customer?.name||'').toLowerCase().includes(obSearch) ||
+    (b.customer?.phone||'').includes(obSearch));
+  if (obNvdh) data = data.filter(b => b.assignedTo === obNvdh);
 
   if (!data.length) {
     el.innerHTML = '<p class="text-gray-400 text-sm py-8 text-center">Không có tour nào</p>';
@@ -3100,6 +3283,14 @@ async function loadTourTasks() {
     if (!badge) return;
     if (overdue > 0) { badge.textContent = overdue + ' quá hạn'; badge.classList.remove('hidden'); }
     else badge.classList.add('hidden');
+    // phase count badges
+    const phaseLabels2 = { BOOKING:'📋 Xác nhận đơn', PREOPS:'🛠 Chuẩn bị', OPS:'🚌 Trong tour', POSTOPS:'📊 Sau tour' };
+    const phaseCounts2 = {};
+    tasks.forEach(t => { phaseCounts2[t.phase] = (phaseCounts2[t.phase]||0)+1; });
+    document.querySelectorAll('.tt-phase-btn').forEach(b => {
+      const p = b.dataset.phase;
+      if (p && p !== 'all') b.textContent = phaseLabels2[p] + (phaseCounts2[p] ? ` (${phaseCounts2[p]})` : '');
+    });
     renderTourTasks();
   } catch(e) { console.error(e); }
 }
@@ -3196,16 +3387,8 @@ function renderTourTasks() {
     </div>`).join('');
 }
 
-async function tickTourTask(bookingId, code) {
-  try {
-    await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: true }) });
-    toast(`Đã hoàn thành ${code}`);
-    loadTourTasks();
-    // cập nhật badge sidebar
-    const { overdue } = await api('/bookings/my-tasks');
-    const badge = document.getElementById('taskBadge');
-    if (badge) { if (overdue > 0) { badge.textContent = overdue; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
-  } catch(e) { toast(e.message, 'error'); }
+function tickTourTask(bookingId, code) {
+  openTickModal(bookingId, code, 'tasks');
 }
 
 async function loadClSummary() {
