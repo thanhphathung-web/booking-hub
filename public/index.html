@@ -293,6 +293,7 @@
           <button data-qf="new"      onclick="setQuickFilter('new')"      class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 hover:text-orange-700 transition">🆕 Chờ xác nhận</button>
           <button data-qf="unpaid"   onclick="setQuickFilter('unpaid')"   class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-700 transition">💳 Chưa thu đủ</button>
           <button data-qf="noassign" onclick="setQuickFilter('noassign')" class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 hover:text-orange-700 transition">👤 Chưa phân công</button>
+          <button data-qf="mine"    onclick="setQuickFilter('mine')"    id="qf-mine-btn" class="qf-chip text-xs px-3 py-1 rounded-full border border-blue-300 text-blue-700 hover:border-blue-500 hover:bg-blue-50 transition">🙋 Booking của tôi</button>
         </div>
       </div>
 
@@ -1056,7 +1057,13 @@ function showPage(page) {
   });
   closeSidebar();
   if (page === 'dashboard')  loadDashboard();
-  if (page === 'bookings')   { SELECTED_IDS.clear(); BOOKING_PAGE = 1; loadBookings(); }
+  if (page === 'bookings')   {
+    SELECTED_IDS.clear(); BOOKING_PAGE = 1;
+    if (USER?.role === 'NVDH' && !window._bookingsPageVisited) {
+      window._bookingsPageVisited = true;
+      setQuickFilter('mine'); // NVDH sees own bookings first
+    } else { loadBookings(); }
+  }
   if (page === 'users')      loadUsers();
   if (page === 'products')   loadProducts();
   if (page === 'suppliers')  loadSuppliers();
@@ -1340,6 +1347,7 @@ function clearAllFilters() {
 
 function clearQuickChips() {
   window._quickExtraFilter = null;
+  window._quickAssignedTo = null;
   document.querySelectorAll('.qf-chip').forEach(b =>
     b.classList.remove('bg-blue-50','border-blue-500','text-blue-700','font-semibold',
                         'bg-orange-50','border-orange-500','text-orange-700',
@@ -1392,6 +1400,10 @@ function setQuickFilter(type) {
     window._quickExtraFilter = 'noassign';
     activeStatuses.forEach(s => { const cb = document.querySelector(`.status-cb[value="${s}"]`); if (cb) cb.checked = true; });
     document.getElementById('statusFilterLabel').textContent = '3 status';
+  } else if (type === 'mine') {
+    window._quickAssignedTo = USER?.username || '';
+    activeStatuses.forEach(s => { const cb = document.querySelector(`.status-cb[value="${s}"]`); if (cb) cb.checked = true; });
+    document.getElementById('statusFilterLabel').textContent = '3 status';
   }
   BOOKING_PAGE = 1;
   loadBookings();
@@ -1412,6 +1424,7 @@ function buildBookingQuery() {
   if (paid !== '')     p.set('paid', paid);
   if (tourFrom)        p.set('tourFrom', tourFrom);
   if (tourTo)          p.set('tourTo', tourTo);
+  if (window._quickAssignedTo) p.set('assignedTo', window._quickAssignedTo);
   // noassign filter needs large batch for client-side filtering
   if (window._quickExtraFilter === 'noassign') { p.set('limit', 200); }
   else { p.set('page', BOOKING_PAGE); p.set('limit', PAGE_SIZE); }
@@ -1665,6 +1678,7 @@ async function showDetail(id) {
                   ? `<button onclick="openEditBooking()" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">✏️ Sửa</button>` : ''}
                 ${['CONFIRMED','IN_PROGRESS'].includes(b.status) ? `<button onclick="openConfirmMsg()" class="text-xs border border-blue-300 text-blue-700 px-3 py-1 rounded-lg hover:bg-blue-50">📨 Xác nhận KH</button>` : ''}
                 <button onclick="cloneBooking(window._curBooking)" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50" title="Tạo booking mới với cùng khách hàng và sản phẩm">📋 Nhân bản</button>
+                <button onclick="printManifest('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">📄 Manifest</button>
                 <button onclick="printTourDossier('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In Tour File</button>
               </div>
             </div>
@@ -1691,19 +1705,52 @@ async function showDetail(id) {
             </div>
           </div>
 
-          <!-- Status update -->
+          <!-- Status update with visual progress -->
           <div class="bg-white rounded-xl shadow-sm p-6">
-            <h4 class="font-semibold text-gray-700 mb-3">Cập nhật Status</h4>
-            <div class="flex gap-2 flex-wrap">
-              ${['NEW','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'].map(s =>
-                `<button onclick="updateStatus('${b.bookingId}','${s}')"
-                  class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${b.status===s?'bg-blue-900 text-white border-blue-900':'border-gray-300 hover:border-blue-500 hover:text-blue-700'}">
-                  ${s}
-                </button>`).join('')}
-            </div>
-            <div class="mt-3">
-              <input id="statusNote" placeholder="Ghi chú khi đổi status (tuỳ chọn)" class="input text-sm"/>
-            </div>
+            ${(() => {
+              const flow = ['NEW','CONFIRMED','IN_PROGRESS','COMPLETED'];
+              const isCancelled = b.status === 'CANCELLED';
+              const curIdx = flow.indexOf(b.status);
+              const stepMeta = {
+                NEW:         { icon:'📝', label:'Mới', color:'blue' },
+                CONFIRMED:   { icon:'✅', label:'Xác nhận', color:'green' },
+                IN_PROGRESS: { icon:'🚌', label:'Đang dẫn', color:'yellow' },
+                COMPLETED:   { icon:'🏁', label:'Hoàn thành', color:'teal' },
+              };
+              const steps = flow.map((s, i) => {
+                const m = stepMeta[s];
+                const done = !isCancelled && i < curIdx;
+                const active = !isCancelled && i === curIdx;
+                const cls = done ? `bg-blue-900 text-white border-blue-900`
+                  : active ? `bg-white border-2 border-blue-900 text-blue-900 font-bold shadow-sm`
+                  : `bg-gray-100 text-gray-400 border-gray-200`;
+                const lineCls = done ? 'bg-blue-900' : 'bg-gray-200';
+                const connector = i < flow.length - 1
+                  ? `<div class="flex-1 h-0.5 mx-1 mt-5 ${lineCls}"></div>` : '';
+                return `<div class="flex flex-col items-center gap-1 flex-shrink-0">
+                    <div class="w-10 h-10 rounded-full border flex items-center justify-center text-base ${cls}">${done ? '✓' : m.icon}</div>
+                    <span class="text-xs ${active ? 'font-semibold text-blue-900' : 'text-gray-400'} whitespace-nowrap">${m.label}</span>
+                  </div>${connector}`;
+              }).join('');
+              return `<div class="flex items-start mb-4 px-2">
+                ${isCancelled
+                  ? `<div class="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2 w-full"><span class="text-red-600 text-lg">❌</span><span class="text-red-700 font-semibold text-sm">Đã huỷ</span></div>`
+                  : steps}
+              </div>`;
+            })()}
+            <details class="group">
+              <summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none flex items-center gap-1">
+                <span class="group-open:hidden">▸</span><span class="hidden group-open:inline">▾</span> Đổi trạng thái
+              </summary>
+              <div class="mt-3 flex gap-2 flex-wrap pt-3 border-t">
+                ${['NEW','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'].map(s =>
+                  `<button onclick="updateStatus('${b.bookingId}','${s}')"
+                    class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${b.status===s?'bg-blue-900 text-white border-blue-900':'border-gray-300 hover:border-blue-500 hover:text-blue-700'}">
+                    ${s}
+                  </button>`).join('')}
+                <input id="statusNote" placeholder="Ghi chú (tuỳ chọn)" class="input text-sm mt-2 w-full"/>
+              </div>
+            </details>
           </div>
 
           ${renderTourChecklist(b)}
@@ -2201,6 +2248,70 @@ async function exportBookingCSV() {
     a.click(); URL.revokeObjectURL(url);
     toast(`✅ Xuất ${bookings.length} booking — mở bằng Excel`);
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Tour Manifest (danh sách hành khách) ──────────────────
+function printManifest(bookingId) {
+  const b = window._curBooking;
+  if (!b || b.bookingId !== bookingId) { toast('Không tìm thấy dữ liệu', 'error'); return; }
+  const collected = (b.payment?.receipts||[]).reduce((s,r)=>s+(r.amount||0),0);
+  const remaining = (b.payment?.amount||0) - collected;
+  const w = window.open('','_blank','width=900,height=700');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Manifest — ${b.bookingId}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:13px;color:#222;padding:24px;max-width:800px;margin:0 auto}
+    h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;font-weight:normal;color:#666;margin:0 0 16px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    .card{border:1px solid #ddd;border-radius:8px;padding:12px}
+    .label{font-size:11px;color:#888;margin-bottom:2px}.val{font-weight:bold}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th{background:#1e3a5f;color:#fff;padding:8px 10px;text-align:left;font-size:12px}
+    td{border-bottom:1px solid #eee;padding:8px 10px;vertical-align:top}
+    tr:nth-child(even) td{background:#f9f9f9}
+    .special{color:#c05600;font-weight:bold}
+    .footer{margin-top:24px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#888;display:flex;justify-content:space-between}
+    .sign{border:1px solid #ccc;height:60px;border-radius:6px;margin-top:8px}
+    @media print{body{padding:0}.no-print{display:none}}
+  </style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+    <div><h1>🏝️ DANH SÁCH HÀNH KHÁCH</h1><h2>${b.bookingId}</h2></div>
+    <div style="text-align:right;font-size:12px;color:#666">In lúc: ${new Date().toLocaleString('vi-VN')}</div>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="label">Tour / Sản phẩm</div><div class="val">${b.product}</div></div>
+    <div class="card"><div class="label">Ngày khởi hành</div><div class="val">${b.tourDate}</div></div>
+    <div class="card"><div class="label">Số khách</div><div class="val">${b.adults} người lớn${b.children>0?' + '+b.children+' trẻ em':''} = ${b.adults+(b.children||0)} người</div></div>
+    <div class="card"><div class="label">NVDH phụ trách</div><div class="val">${b.assignedTo || '— Chưa phân công —'}</div></div>
+  </div>
+  ${b.specialReqs ? `<div class="card" style="margin-bottom:16px;border-color:#f59e0b;background:#fffbeb"><div class="label">⚠️ Yêu cầu đặc biệt / Lưu ý</div><div class="val special">${b.specialReqs}</div></div>` : ''}
+  <table>
+    <thead><tr><th>#</th><th>Họ tên</th><th>SĐT</th><th>Email</th><th>Ghi chú / Yêu cầu</th><th>Ký nhận</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>${b.customer.name}</td><td>${b.customer.phone}</td><td>${b.customer.email||'—'}</td>
+          <td class="${b.specialReqs?'special':''}">${b.specialReqs||''}</td><td class="sign"></td></tr>
+      ${Array.from({length: Math.max(0,(b.adults+(b.children||0))-1)}, (_,i) =>
+        `<tr><td>${i+2}</td><td></td><td></td><td></td><td></td><td class="sign"></td></tr>`
+      ).join('')}
+    </tbody>
+  </table>
+  <div class="grid2" style="margin-top:20px">
+    <div class="card"><div class="label">Thanh toán</div>
+      <div class="val">${Number(b.payment?.amount||0).toLocaleString('vi-VN')}đ</div>
+      <div style="font-size:12px;color:#666;margin-top:4px">${b.payment?.paid?'✅ Đã thanh toán đủ':collected>0?'🟡 Đã cọc '+collected.toLocaleString('vi-VN')+'đ · Còn '+remaining.toLocaleString('vi-VN')+'đ':'⚠️ Chưa thu tiền'}</div>
+    </div>
+    <div class="card"><div class="label">Ghi chú điều hành</div><div style="height:40px"></div></div>
+  </div>
+  <div class="footer">
+    <div><strong>Khách ký xác nhận đoàn đủ:</strong> ___________________</div>
+    <div><strong>NVDH ký:</strong> ___________________</div>
+    <div>Ngày: ___________</div>
+  </div>
+  <div class="no-print" style="margin-top:16px;text-align:center">
+    <button onclick="window.print()" style="background:#1e3a5f;color:#fff;border:none;padding:10px 32px;border-radius:8px;font-size:14px;cursor:pointer">🖨 In Manifest</button>
+  </div>
+  </body></html>`);
+  w.document.close();
 }
 
 // ── Clone Booking ─────────────────────────────────────────
