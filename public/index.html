@@ -537,9 +537,27 @@
           </div>
         </div>
       </div>
+      <!-- Việc điều hành tour (per-booking checklist) -->
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+            🗓️ Việc điều hành tour
+            <span id="tt-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-normal"></span>
+          </h3>
+          <div class="flex gap-1 flex-wrap">
+            <button onclick="filterTourTasks('all')" data-filter="all" class="tt-filter-btn bg-blue-900 text-white text-xs px-3 py-1.5 rounded-full border border-blue-900 transition">Tất cả</button>
+            <button onclick="filterTourTasks('overdue')" data-filter="overdue" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 transition">Quá hạn</button>
+            <button onclick="filterTourTasks('today')" data-filter="today" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 transition">Hôm nay</button>
+            <button onclick="filterTourTasks('upcoming')" data-filter="upcoming" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 transition">Sắp tới (7 ngày)</button>
+          </div>
+        </div>
+        <div id="tour-tasks-list"><p class="text-gray-400 text-sm py-4 text-center">Đang tải…</p></div>
+      </div>
+
+      <!-- Tiến độ checklist thói quen -->
       <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
         <div class="flex items-center justify-between mb-3">
-          <span class="font-semibold text-gray-700">Tiến độ hôm nay</span>
+          <span class="font-semibold text-gray-700">Tiến độ thói quen hôm nay</span>
           <span id="cl-progressLabel" class="text-sm font-bold text-blue-900"></span>
         </div>
         <div class="w-full bg-gray-100 rounded-full h-4">
@@ -2835,8 +2853,11 @@ function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 // ── Checklist ─────────────────────────────────────────────
 let CL_ITEMS = [];
+let MY_TOUR_TASKS = [];
+let TT_ACTIVE_FILTER = 'all';
 
 async function loadChecklist() {
+  loadTourTasks();
   try {
     const data = await api('/checklists');
     CL_ITEMS = data.items;
@@ -2890,6 +2911,105 @@ async function toggleCl(itemId, isDone) {
       await api(`/checklists/${itemId}/complete`, { method:'POST' });
     }
     await loadChecklist();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Tour tasks (per-booking checklist) trên trang Checklist ──
+async function loadTourTasks() {
+  try {
+    const { tasks, overdue } = await api('/bookings/my-tasks');
+    MY_TOUR_TASKS = tasks;
+    const badge = document.getElementById('tt-badge');
+    if (!badge) return;
+    if (overdue > 0) { badge.textContent = overdue + ' quá hạn'; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+    renderTourTasks(TT_ACTIVE_FILTER);
+  } catch(e) { console.error(e); }
+}
+
+function filterTourTasks(filter) {
+  TT_ACTIVE_FILTER = filter;
+  document.querySelectorAll('.tt-filter-btn').forEach(b => {
+    const active = b.dataset.filter === filter;
+    b.classList.toggle('bg-blue-900', active);
+    b.classList.toggle('text-white', active);
+    b.classList.toggle('border-blue-900', active);
+    b.classList.toggle('text-gray-600', !active);
+    b.classList.toggle('border-gray-200', !active);
+  });
+  renderTourTasks(filter);
+}
+
+function renderTourTasks(filter) {
+  const listEl = document.getElementById('tour-tasks-list');
+  if (!listEl) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const in7d  = new Date(Date.now() + 7*864e5).toISOString().slice(0, 10);
+
+  let tasks = MY_TOUR_TASKS;
+  if (filter === 'overdue')  tasks = tasks.filter(t => t.overdue);
+  else if (filter === 'today')    tasks = tasks.filter(t => t.dueToday);
+  else if (filter === 'upcoming') tasks = tasks.filter(t => t.deadline && !t.overdue && !t.dueToday && t.deadline <= in7d);
+
+  if (!tasks.length) {
+    const msgs = { all:'Không có việc nào cần làm 🎉', overdue:'Không có việc quá hạn 👍', today:'Không có việc đến hạn hôm nay', upcoming:'Không có việc đến hạn trong 7 ngày tới' };
+    listEl.innerHTML = `<p class="text-gray-400 text-sm py-6 text-center">${msgs[filter] || 'Không có việc'}</p>`;
+    return;
+  }
+
+  const phaseColor = { BOOKING:'bg-blue-100 text-blue-700', PREOPS:'bg-yellow-100 text-yellow-800', OPS:'bg-green-100 text-green-700', POSTOPS:'bg-purple-100 text-purple-700' };
+  const phaseLabel = { BOOKING:'Xác nhận', PREOPS:'Chuẩn bị', OPS:'Trong tour', POSTOPS:'Sau tour' };
+
+  const byBooking = {};
+  tasks.forEach(t => {
+    if (!byBooking[t.bookingId]) byBooking[t.bookingId] = { product: t.product, tourDate: t.tourDate, items: [] };
+    byBooking[t.bookingId].items.push(t);
+  });
+
+  listEl.innerHTML = Object.entries(byBooking).map(([bid, g]) => `
+    <div class="mb-5 last:mb-0">
+      <div class="flex items-center gap-2 mb-2 pb-1.5 border-b border-gray-100">
+        <a onclick="showDetail('${bid}')" class="font-mono text-sm font-semibold text-blue-700 hover:underline cursor-pointer">${bid}</a>
+        <span class="text-sm text-gray-700 font-medium truncate max-w-xs">${esc(g.product)}</span>
+        <span class="text-xs text-gray-400 whitespace-nowrap">· KH ${g.tourDate}</span>
+        <span class="ml-auto text-xs text-gray-400 whitespace-nowrap">${g.items.length} việc</span>
+      </div>
+      <div class="space-y-1">
+      ${g.items.map(t => {
+        const dl = !t.deadline
+          ? '<span class="text-xs text-gray-400">Trong tour</span>'
+          : t.overdue  ? `<span class="text-xs text-red-600 font-semibold">⏰ Quá hạn ${t.deadline}</span>`
+          : t.dueToday ? '<span class="text-xs text-orange-600 font-semibold">📌 Hôm nay</span>'
+          : `<span class="text-xs text-gray-400">Hạn ${t.deadline}</span>`;
+        return `
+        <div class="flex items-start gap-3 py-2 px-3 rounded-lg transition ${t.overdue ? 'bg-red-50' : t.dueToday ? 'bg-orange-50' : 'hover:bg-gray-50'}">
+          <button onclick="tickTourTask('${t.bookingId}','${t.code}')" title="Đánh dấu hoàn thành"
+            class="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 border-gray-300 hover:border-green-500 hover:bg-green-50 transition"></button>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-800">
+              <span class="font-mono text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1">${t.code}</span>${esc(t.title)}</p>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1">
+              <span class="text-xs px-1.5 py-0.5 rounded ${phaseColor[t.phase] || 'bg-gray-100 text-gray-600'}">${phaseLabel[t.phase] || t.phase}</span>
+              <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">${t.role}</span>
+              ${dl}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+async function tickTourTask(bookingId, code) {
+  try {
+    await api(`/bookings/${bookingId}/checklist/${code}`, { method:'PATCH', body: JSON.stringify({ done: true }) });
+    toast(`Đã hoàn thành ${code}`);
+    loadTourTasks();
+    // cập nhật badge sidebar
+    const { overdue } = await api('/bookings/my-tasks');
+    const badge = document.getElementById('taskBadge');
+    if (badge) { if (overdue > 0) { badge.textContent = overdue; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
   } catch(e) { toast(e.message, 'error'); }
 }
 
