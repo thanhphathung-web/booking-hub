@@ -88,7 +88,10 @@
         <div class="text-lg font-bold">🏝️ Booking Hub</div>
         <div id="userInfo" class="text-xs text-blue-300 mt-0.5"></div>
       </div>
-      <button class="md:hidden text-blue-300 hover:text-white" onclick="closeSidebar()">✕</button>
+      <div class="flex items-center gap-1.5">
+        <button onclick="openCmdK()" title="Tìm kiếm nhanh (Ctrl+K)" class="text-blue-300 hover:text-white p-1.5 rounded-lg hover:bg-blue-800 transition text-base">🔍</button>
+        <button class="md:hidden text-blue-300 hover:text-white p-1.5" onclick="closeSidebar()">✕</button>
+      </div>
     </div>
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <a onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
@@ -288,6 +291,19 @@
           <button data-qf="unpaid"   onclick="setQuickFilter('unpaid')"   class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-700 transition">💳 Chưa thu đủ</button>
           <button data-qf="noassign" onclick="setQuickFilter('noassign')" class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 hover:text-orange-700 transition">👤 Chưa phân công</button>
         </div>
+      </div>
+
+      <!-- Bulk action bar (shown when rows selected) -->
+      <div id="bulk-bar" class="hidden mb-3 bg-blue-900 text-white rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+        <span id="bulk-count" class="text-sm font-semibold"></span>
+        <button onclick="bulkConfirm()" class="text-xs bg-white text-blue-900 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">✅ Xác nhận tất cả</button>
+        <div class="flex items-center gap-1.5">
+          <select id="bulk-nvdh-sel" class="text-xs bg-blue-800 text-white border border-blue-700 rounded-lg px-2 py-1.5 focus:outline-none">
+            <option value="">— Phân công NVDH —</option>
+          </select>
+          <button onclick="bulkAssign()" class="text-xs bg-white text-blue-900 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">👤 Gán</button>
+        </div>
+        <button onclick="clearSelection()" class="ml-auto text-xs text-blue-300 hover:text-white underline">Bỏ chọn</button>
       </div>
 
       <div id="bookingTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
@@ -674,6 +690,25 @@
   </div>
 </div>
 
+<!-- CMD+K global search modal -->
+<div id="cmdk-modal" class="hidden fixed inset-0 bg-black bg-opacity-40 z-50 flex items-start justify-center pt-24 px-4" onclick="if(event.target===this)closeCmdK()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+      <span class="text-gray-400 text-lg">🔍</span>
+      <input id="cmdk-input" type="text" placeholder="Tìm mã đơn, tên khách, SĐT, tour…"
+        class="flex-1 outline-none text-sm placeholder-gray-300" oninput="searchCmdK()" autocomplete="off"/>
+      <kbd class="text-xs text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 font-mono">ESC</kbd>
+    </div>
+    <div id="cmdk-results" class="max-h-80 overflow-y-auto py-1">
+      <p class="text-xs text-gray-400 px-4 py-3">Gõ để tìm kiếm booking hoặc khách hàng…</p>
+    </div>
+    <div class="border-t border-gray-100 px-4 py-2 flex items-center gap-4 text-xs text-gray-400">
+      <span><kbd class="border border-gray-200 rounded px-1 font-mono">Ctrl</kbd>+<kbd class="border border-gray-200 rounded px-1 font-mono">K</kbd> để mở</span>
+      <span><kbd class="border border-gray-200 rounded px-1 font-mono">↵</kbd> để chọn kết quả đầu tiên</span>
+    </div>
+  </div>
+</div>
+
 <!-- MODALS -->
 <div id="modalCreateUser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
@@ -991,7 +1026,7 @@ function showPage(page) {
   });
   closeSidebar();
   if (page === 'dashboard')  loadDashboard();
-  if (page === 'bookings')   { BOOKING_PAGE = 1; loadBookings(); }
+  if (page === 'bookings')   { SELECTED_IDS.clear(); BOOKING_PAGE = 1; loadBookings(); }
   if (page === 'users')      loadUsers();
   if (page === 'products')   loadProducts();
   if (page === 'suppliers')  loadSuppliers();
@@ -1423,6 +1458,66 @@ function isOverdue(b) {
   return tourMs < Date.now();
 }
 
+let SELECTED_IDS = new Set();
+
+function toggleRowSelect(id) {
+  if (SELECTED_IDS.has(id)) SELECTED_IDS.delete(id);
+  else SELECTED_IDS.add(id);
+  updateSelectionBar();
+}
+function clearSelection() {
+  SELECTED_IDS.clear();
+  updateSelectionBar();
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('select-all-cb');
+  if (allCb) allCb.checked = false;
+}
+function updateSelectionBar() {
+  const n = SELECTED_IDS.size;
+  const bar = document.getElementById('bulk-bar');
+  const cnt = document.getElementById('bulk-count');
+  if (!bar) return;
+  if (n === 0) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  cnt.textContent = `Đã chọn ${n} booking`;
+  // populate NVDH select
+  const sel = document.getElementById('bulk-nvdh-sel');
+  if (sel && sel.options.length <= 1) {
+    STAFF_LIST.filter(s => s.role === 'NVDH').forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.username; opt.textContent = `${s.name} (${s.username})`;
+      sel.appendChild(opt);
+    });
+  }
+}
+async function bulkConfirm() {
+  const ids = [...SELECTED_IDS];
+  if (!ids.length) return;
+  if (!confirm(`Xác nhận ${ids.length} booking sang CONFIRMED?`)) return;
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { await api(`/bookings/${id}/status`, { method:'PATCH', body: JSON.stringify({ status: 'CONFIRMED' }) }); ok++; }
+    catch(e) { fail++; }
+  }
+  clearSelection();
+  toast(`✅ Đã xác nhận ${ok} booking${fail ? ` · ${fail} lỗi (không phải NEW)` : ''}`);
+  loadBookings();
+}
+async function bulkAssign() {
+  const nvdh = document.getElementById('bulk-nvdh-sel').value;
+  if (!nvdh) return toast('Vui lòng chọn NVDH', 'warn');
+  const ids = [...SELECTED_IDS];
+  if (!ids.length) return;
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { await api(`/bookings/${id}/assign`, { method:'PATCH', body: JSON.stringify({ assignedTo: nvdh }) }); ok++; }
+    catch(e) { fail++; }
+  }
+  clearSelection();
+  toast(`👤 Đã phân công ${ok} booking cho ${nvdh}${fail ? ` · ${fail} lỗi` : ''}`);
+  loadBookings();
+}
+
 function renderTable(bookings) {
   if (bookings.length === 0) {
     document.getElementById('bookingTable').innerHTML = '<p class="text-gray-400 text-sm p-6">Không có booking nào phù hợp</p>';
@@ -1434,6 +1529,7 @@ function renderTable(bookings) {
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
         <tr>
+          <th class="px-3 py-3 w-8"><input id="select-all-cb" type="checkbox" class="w-4 h-4 rounded accent-blue-700" onchange="document.querySelectorAll('.row-cb').forEach(cb=>{cb.checked=this.checked;cb.checked?SELECTED_IDS.add(cb.dataset.id):SELECTED_IDS.delete(cb.dataset.id)});updateSelectionBar()"/></th>
           <th class="px-4 py-3">Mã đơn</th>
           <th class="px-4 py-3">Tour / Sản phẩm</th>
           <th class="px-4 py-3">Khách hàng</th>
@@ -1451,8 +1547,11 @@ function renderTable(bookings) {
           const overdue = isOverdue(b);
           const rowClass = overdue ? 'row-overdue' : urgent ? 'row-urgent' : 'hover:bg-gray-50';
           const daysToTour = Math.ceil((new Date(b.tourDate).getTime() - Date.now()) / 86400000);
+          const isSelected = SELECTED_IDS.has(b.bookingId);
           return `
-          <tr class="${rowClass}">
+          <tr class="${rowClass}${isSelected?' bg-blue-50':''}">
+            <td class="px-3 py-3"><input type="checkbox" data-id="${b.bookingId}" class="row-cb w-4 h-4 rounded accent-blue-700"
+              ${isSelected?'checked':''} onchange="toggleRowSelect('${b.bookingId}')"/></td>
             <td class="px-4 py-3 font-mono text-xs text-blue-700 whitespace-nowrap">
               ${b.bookingId}
               ${urgent ? '<span class="ml-1 text-orange-600 text-xs font-bold" title="Tour sắp khởi hành, chưa có NVDH">⚠️</span>' : ''}
@@ -1471,9 +1570,7 @@ function renderTable(bookings) {
               ${daysToTour >= 0 && daysToTour <= 3 && !['COMPLETED','CANCELLED'].includes(b.status) ? `<div class="text-xs text-orange-500">còn ${daysToTour} ngày</div>` : ''}
             </td>
             <td class="px-4 py-3">${b.type === 'WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-400">STD</span>'}</td>
-            <td class="px-4 py-3">
-              ${payBadge(b)}
-            </td>
+            <td class="px-4 py-3">${payBadge(b)}</td>
             <td class="px-4 py-3">${statusBadge(b.status)}</td>
             <td class="px-4 py-3 text-xs text-gray-500">${esc(b.assignedTo) || '<span class="text-gray-300">—</span>'}</td>
             <td class="px-4 py-3">
@@ -1531,6 +1628,7 @@ async function showDetail(id) {
                 ${statusBadge(b.status)}
                 ${['CEO','TPDH','NVDH'].includes(USER.role) && !['COMPLETED','CANCELLED'].includes(b.status)
                   ? `<button onclick="openEditBooking()" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">✏️ Sửa</button>` : ''}
+                <button onclick="cloneBooking(window._curBooking)" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50" title="Tạo booking mới với cùng khách hàng và sản phẩm">📋 Nhân bản</button>
                 <button onclick="printTourDossier('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In Tour File</button>
               </div>
             </div>
@@ -1988,6 +2086,104 @@ async function refreshTaskBadge() {
 }
 
 // ── Print Tour Dossier ────────────────────────────────────
+// ── Clone Booking ─────────────────────────────────────────
+function cloneBooking(b) {
+  if (!b) return;
+  showPage('new-booking');
+  fillProductSelect();
+  document.getElementById('f-product').value  = b.product || '';
+  document.getElementById('f-type').value     = b.type || 'STANDARD';
+  document.getElementById('f-adults').value   = b.adults || 1;
+  document.getElementById('f-children').value = b.children || 0;
+  document.getElementById('f-cname').value    = b.customer?.name || '';
+  document.getElementById('f-cphone').value   = b.customer?.phone || '';
+  document.getElementById('f-cemail').value   = b.customer?.email || '';
+  document.getElementById('f-special').value  = b.specialReqs || '';
+  document.getElementById('f-amount').value   = b.payment?.amount || 0;
+  document.getElementById('f-source').value   = b.source || 'ADMIN';
+  document.getElementById('f-date').value     = ''; // phải chọn ngày mới
+  if (b.type === 'WELLNESS') {
+    document.getElementById('f-wpkg').value = b.wellness?.package || '';
+    document.getElementById('f-wncc').value = b.wellness?.ncc || '';
+  }
+  toggleWellness();
+  const hint = document.getElementById('f-crm-hint');
+  if (hint) {
+    hint.innerHTML = `📋 Nhân bản từ <strong>${b.bookingId}</strong> — vui lòng chọn <strong>ngày khởi hành mới</strong>`;
+    hint.classList.remove('hidden');
+  }
+}
+
+// ── CMD+K Global Search ────────────────────────────────────
+function openCmdK() {
+  document.getElementById('cmdk-modal').classList.remove('hidden');
+  document.getElementById('cmdk-input').value = '';
+  document.getElementById('cmdk-results').innerHTML = '<p class="text-xs text-gray-400 px-4 py-3">Gõ để tìm kiếm booking hoặc khách hàng…</p>';
+  setTimeout(() => document.getElementById('cmdk-input').focus(), 60);
+}
+function closeCmdK() {
+  document.getElementById('cmdk-modal').classList.add('hidden');
+}
+
+let _cmdkTimer;
+async function searchCmdK() {
+  clearTimeout(_cmdkTimer);
+  _cmdkTimer = setTimeout(async () => {
+    const q = (document.getElementById('cmdk-input').value || '').trim();
+    const el = document.getElementById('cmdk-results');
+    if (!q) { el.innerHTML = '<p class="text-xs text-gray-400 px-4 py-3">Gõ để tìm kiếm booking hoặc khách hàng…</p>'; return; }
+    el.innerHTML = '<p class="text-xs text-gray-400 px-4 py-3 animate-pulse">Đang tìm…</p>';
+    try {
+      const [bRes, cRes] = await Promise.all([
+        api(`/bookings?search=${encodeURIComponent(q)}&limit=6`),
+        api(`/customers?search=${encodeURIComponent(q)}`).catch(() => ({ customers: [] })),
+      ]);
+      let html = '';
+      if (bRes.bookings?.length) {
+        html += `<p class="text-xs text-gray-400 px-4 pt-2 pb-1 font-semibold uppercase tracking-wide">Booking</p>`;
+        html += bRes.bookings.map((b, i) => `
+          <button data-id="${b.bookingId}" onclick="closeCmdK();showDetail(this.dataset.id)"
+            class="cmdk-item w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 transition ${i===0?'bg-gray-50':''}">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-800 truncate">${esc(b.product)}</p>
+              <p class="text-xs text-gray-400">${b.bookingId} · ${esc(b.customer?.name||'')} · ${b.tourDate}</p>
+            </div>
+            ${statusBadge(b.status)}
+          </button>`).join('');
+      }
+      if (cRes.customers?.length) {
+        html += `<p class="text-xs text-gray-400 px-4 pt-2 pb-1 font-semibold uppercase tracking-wide">Khách hàng</p>`;
+        html += cRes.customers.slice(0,4).map(c => `
+          <button data-p="${esc(c.phone)}" onclick="closeCmdK();openCustomer(this.dataset.p)"
+            class="w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 transition">
+            <div>
+              <p class="text-sm font-medium text-gray-800">${esc(c.name)}</p>
+              <p class="text-xs text-gray-400">${esc(c.phone)} · ${c.totalBookings||0} booking</p>
+            </div>
+            <span class="ml-auto text-xs ${c.tier==='VIP'?'text-yellow-600':c.tier==='THANTHIET'?'text-pink-600':'text-gray-400'}">${c.tier==='VIP'?'⭐ VIP':c.tier==='THANTHIET'?'❤️ Thân thiết':'Mới'}</span>
+          </button>`).join('');
+      }
+      if (!html) html = '<p class="text-xs text-gray-500 px-4 py-4 text-center">Không tìm thấy kết quả nào</p>';
+      el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="text-xs text-red-500 px-4 py-3">${esc(e.message)}</p>`; }
+  }, 280);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdK(); return; }
+  if (e.key === 'Escape') {
+    closeCmdK();
+    if (typeof cancelTickNote === 'function') cancelTickNote();
+    return;
+  }
+  // Enter on CMD+K focuses first result
+  if (e.key === 'Enter' && !document.getElementById('cmdk-modal')?.classList.contains('hidden')) {
+    const first = document.querySelector('.cmdk-item');
+    if (first) first.click();
+  }
+});
+
 function printTourDossier(bookingId) {
   const b = window._curBooking;
   if (!b || b.bookingId !== bookingId) { toast('Không tìm thấy dữ liệu tour', 'error'); return; }
