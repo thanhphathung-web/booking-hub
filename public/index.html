@@ -1638,11 +1638,11 @@ function copyBrief() {
 }
 
 // ── Checklist điều hành tour (per-booking) ────────────────
-const TOUR_PHASE_LABELS = {
-  BOOKING: '1️⃣ Booking Control — Xác nhận đơn',
-  PREOPS:  '2️⃣ Pre-Operation — Chuẩn bị trước tour',
-  OPS:     '3️⃣ Operation — Trong tour',
-  POSTOPS: '4️⃣ Post-Operation — Sau tour',
+const TOUR_PHASE_META = {
+  BOOKING: { label:'📋 Xác nhận đơn',     outer:'border-blue-200',   hdr:'bg-blue-50 text-blue-900',   bar:'bg-blue-500' },
+  PREOPS:  { label:'🛠 Chuẩn bị',          outer:'border-yellow-200', hdr:'bg-yellow-50 text-yellow-900', bar:'bg-yellow-500' },
+  OPS:     { label:'🚌 Trong tour',         outer:'border-green-200',  hdr:'bg-green-50 text-green-900',  bar:'bg-green-500' },
+  POSTOPS: { label:'📊 Sau tour',           outer:'border-purple-200', hdr:'bg-purple-50 text-purple-900', bar:'bg-purple-600' },
 };
 
 function renderTourChecklist(b) {
@@ -1650,9 +1650,58 @@ function renderTourChecklist(b) {
   if (!cl.length) return '';
   const today = new Date().toISOString().slice(0,10);
   const done = cl.filter(i => i.done).length;
-  const pct = Math.round(done / cl.length * 100);
+  const pct  = Math.round(done / cl.length * 100);
   const canTick = i => ['CEO','TPDH'].includes(USER.role) || i.role === USER.role;
   const phases = ['BOOKING','PREOPS','OPS','POSTOPS'].filter(p => cl.some(i => i.phase === p));
+
+  const phaseBlocks = phases.map(p => {
+    const items   = cl.filter(i => i.phase === p);
+    const pDone   = items.filter(i => i.done).length;
+    const pPct    = Math.round(pDone / items.length * 100);
+    const allDone = pDone === items.length;
+    const hasOvd  = items.some(i => !i.done && i.deadline && i.deadline < today);
+    const m       = TOUR_PHASE_META[p];
+    const pid     = 'chkphase-' + b.bookingId.replace(/\W/g,'') + '-' + p;
+
+    const rows = items.map(i => {
+      const overdue = !i.done && i.deadline && i.deadline < today;
+      const tick    = canTick(i);
+      return `<div class="flex items-start gap-2.5 px-4 py-2.5 border-t border-gray-100 ${overdue ? 'bg-red-50' : i.done ? 'bg-gray-50' : 'bg-white'}">
+        <button ${tick ? `onclick="tickDetailItem('${b.bookingId}','${i.code}',${i.done})"` : 'disabled'}
+          title="${tick ? (i.done ? 'Bỏ tick' : 'Đánh dấu hoàn thành') : 'Việc của role '+i.role}"
+          class="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center text-xs font-bold transition
+            ${i.done ? 'bg-green-500 border-green-500 text-white' : tick ? 'border-gray-300 hover:border-green-500 hover:bg-green-50' : 'border-gray-200 opacity-40 cursor-not-allowed'}">
+          ${i.done ? '✓' : ''}</button>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm ${i.done ? 'line-through text-gray-400' : 'text-gray-800'}">
+            <span class="font-mono text-xs text-gray-400 mr-1">${i.code}</span>${esc(i.title)}</p>
+          <p class="text-xs ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}">
+            ${i.role} · ${i.done
+              ? `✔ ${esc(i.doneName || i.doneBy)} · ${new Date(i.doneAt).toLocaleString('vi-VN')}`
+              : (i.deadline ? 'Hạn ' + i.deadline : 'Trong tour')}${overdue ? ' · ⏰ QUÁ HẠN' : ''}</p>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="border ${m.outer} rounded-lg overflow-hidden">
+      <button onclick="togglePhaseSection('${pid}')"
+        class="w-full flex items-center justify-between px-4 py-3 ${m.hdr} hover:opacity-90 transition select-none">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-sm">${m.label}</span>
+          ${hasOvd ? '<span class="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">⚠ quá hạn</span>' : ''}
+          ${allDone ? '<span class="text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full">✓ xong</span>' : ''}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold">${pDone}/${items.length}</span>
+          <div class="w-16 bg-white bg-opacity-60 rounded-full h-1.5">
+            <div class="${m.bar} h-1.5 rounded-full transition-all" style="width:${pPct}%"></div>
+          </div>
+          <span id="${pid}-chevron" class="text-xs opacity-50">${allDone ? '▸' : '▾'}</span>
+        </div>
+      </button>
+      <div id="${pid}" class="${allDone ? 'hidden' : ''}">${rows}</div>
+    </div>`;
+  }).join('');
 
   return `
     <div class="bg-white rounded-xl shadow-sm p-6">
@@ -1660,32 +1709,19 @@ function renderTourChecklist(b) {
         <h4 class="font-semibold text-gray-700">✅ Checklist điều hành tour</h4>
         <span class="text-sm font-bold ${pct===100 ? 'text-green-600' : 'text-blue-900'}">${done}/${cl.length} (${pct}%)</span>
       </div>
-      <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
+      <div class="w-full bg-gray-100 rounded-full h-2 mb-4">
         <div class="h-2 rounded-full transition-all ${pct===100 ? 'bg-green-500' : 'bg-blue-900'}" style="width:${pct}%"></div>
       </div>
-      ${phases.map(p => `
-        <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mt-4 mb-1.5">${TOUR_PHASE_LABELS[p]}</p>
-        ${cl.filter(i => i.phase === p).map(i => {
-          const overdue = !i.done && i.deadline && i.deadline < today;
-          const tick = canTick(i);
-          return `
-          <div class="flex items-start gap-2.5 py-1.5 ${overdue ? 'bg-red-50 -mx-2 px-2 rounded-lg' : ''}">
-            <button ${tick ? `onclick="tickDetailItem('${b.bookingId}','${i.code}',${i.done})"` : 'disabled'}
-              title="${tick ? (i.done ? 'Bỏ tick' : 'Đánh dấu hoàn thành') : 'Việc của role '+i.role}"
-              class="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center text-xs font-bold transition
-                ${i.done ? 'bg-green-500 border-green-500 text-white' : tick ? 'border-gray-300 hover:border-green-500 hover:bg-green-50' : 'border-gray-200 opacity-40 cursor-not-allowed'}">
-              ${i.done ? '✓' : ''}</button>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm ${i.done ? 'line-through text-gray-400' : 'text-gray-800'}">
-                <span class="font-mono text-xs text-gray-400 mr-1">${i.code}</span>${esc(i.title)}</p>
-              <p class="text-xs ${overdue ? 'text-red-600 font-semibold' : 'text-gray-400'}">
-                ${i.role} · ${i.done
-                  ? `✔ ${esc(i.doneName || i.doneBy)} · ${new Date(i.doneAt).toLocaleString('vi-VN')}`
-                  : (i.deadline ? 'Hạn ' + i.deadline : 'Trong tour')}${overdue ? ' · ⏰ QUÁ HẠN' : ''}</p>
-            </div>
-          </div>`;
-        }).join('')}`).join('')}
+      <div class="space-y-2">${phaseBlocks}</div>
     </div>`;
+}
+
+function togglePhaseSection(pid) {
+  const body    = document.getElementById(pid);
+  const chevron = document.getElementById(pid + '-chevron');
+  if (!body) return;
+  const hidden = body.classList.toggle('hidden');
+  if (chevron) chevron.textContent = hidden ? '▸' : '▾';
 }
 
 async function tickDetailItem(bookingId, code, isDone) {
