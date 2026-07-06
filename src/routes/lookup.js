@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
+const { collectedOf } = require('../services/payments');
 
 // Tra cứu booking công khai cho KHÁCH — không cần đăng nhập
 // Bảo mật: phải khớp cả mã đơn + SĐT; POST để SĐT không lộ trên URL/log;
@@ -54,7 +55,11 @@ router.post('/', rateLimit, async (req, res) => {
       customerName: b.customer.name,
       status: b.status,
       statusLabel: STATUS_LABELS[b.status] || b.status,
-      payment: { amount: b.payment?.amount || 0, paid: !!b.payment?.paid },
+      payment: {
+        amount: b.payment?.amount || 0, paid: !!b.payment?.paid,
+        collected: collectedOf(b),
+        remaining: Math.max(0, (b.payment?.amount || 0) - collectedOf(b)),
+      },
       specialReqs: b.specialReqs || '',
       timeline: (b.statusHistory || []).map(h => ({
         status: h.status, statusLabel: STATUS_LABELS[h.status] || h.status, at: h.at.slice(0, 10) })),

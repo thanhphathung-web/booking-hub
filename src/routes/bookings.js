@@ -4,6 +4,7 @@ const { requireAuth, requirePerm } = require('../middleware/auth');
 const { ensureChecklist, recomputeDeadlines } = require('../db/tourChecklist');
 const { getRunningBookings, tasksFor } = require('../services/tasks');
 const { createBooking } = require('../services/createBooking');
+const { receiptsTotal, collectedOf, recomputePaid } = require('../services/payments');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -73,7 +74,10 @@ router.get('/stats', requireAuth, async (req, res) => {
       dbAsync.count('bookings', { ...base, 'payment.paid': false, status: { $nin: ['CANCELLED','COMPLETED'] } }),
       dbAsync.count('bookings', { tourDate: { $gte: today, $lte: in3days }, status: { $nin: ['CANCELLED','COMPLETED'] }, assignedTo: null }),
     ]);
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent });
+    // Tour khởi hành trong 3 ngày tới mà khách chưa thanh toán đủ — kế toán cần đòi gấp
+    const dueSoonUnpaid = await dbAsync.count('bookings',
+      { tourDate: { $gte: today, $lte: in3days }, status: { $nin: ['CANCELLED','COMPLETED'] }, 'payment.paid': false });
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -221,6 +225,8 @@ router.patch('/:id/payment', ...requirePerm('finance:payment'), async (req, res)
       payment.amount = amt;
     }
     if (req.body.paid !== undefined) payment.paid = !!req.body.paid;
+    // Đã có receipts thì paid luôn suy ra từ tổng đã thu — không toggle tay được nữa
+    if ((payment.receipts || []).length) recomputePaid(payment);
 
     const now = new Date().toISOString();
     await dbAsync.update('bookings', { bookingId: req.params.id },
@@ -228,6 +234,71 @@ router.patch('/:id/payment', ...requirePerm('finance:payment'), async (req, res)
     await dbAsync.insert('activity', { type: 'PAYMENT_UPDATED', bookingId: req.params.id,
       to: `${payment.amount}|${payment.paid ? 'paid' : 'unpaid'}`, by: req.user.username, at: now });
     res.json({ payment, message: payment.paid ? 'Đã đánh dấu thanh toán đủ' : 'Đã cập nhật thanh toán' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/bookings/:id/payments ───────────────────────
+// Ghi nhận 1 lần thu tiền khách (cọc / trả nốt) — CEO/Kế toán (finance:payment)
+const PAY_METHODS = ['CASH', 'BANK', 'CARD', 'OTHER'];
+
+router.post('/:id/payments', ...requirePerm('finance:payment'), async (req, res) => {
+  try {
+    const { amount, method = 'BANK', note = '', date } = req.body;
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return res.status(400).json({ error: 'Số tiền phải lớn hơn 0' });
+    if (!PAY_METHODS.includes(method))
+      return res.status(400).json({ error: `Hình thức không hợp lệ. Dùng: ${PAY_METHODS.join(', ')}` });
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      return res.status(400).json({ error: 'Ngày thu phải dạng YYYY-MM-DD' });
+
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (booking.status === 'CANCELLED')
+      return res.status(409).json({ error: 'Booking đã huỷ — không ghi nhận thu tiền' });
+
+    const now = new Date().toISOString();
+    const payment = { ...booking.payment };
+    payment.receipts = payment.receipts || [];
+    const receipt = {
+      rcptId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      amount: amt, method, date: date || now.slice(0, 10), note: String(note).trim(),
+      by: req.user.username, name: req.user.name, at: now,
+    };
+    payment.receipts.push(receipt);
+    recomputePaid(payment);
+
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { payment, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'PAYMENT_RECEIVED', bookingId: req.params.id,
+      to: `${amt}|${method}`, by: req.user.username, at: now });
+
+    const collected = receiptsTotal(payment);
+    res.status(201).json({
+      message: payment.paid ? '✅ Đã thu đủ tiền booking' : 'Đã ghi nhận thu tiền',
+      receipt, payment, collected,
+      remaining: Math.max(0, (payment.amount || 0) - collected),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/bookings/:id/payments/:rcptId ─────────────
+// Xoá 1 lần thu ghi nhầm — CEO/Kế toán (finance:payment)
+router.delete('/:id/payments/:rcptId', ...requirePerm('finance:payment'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const receipts = booking.payment?.receipts || [];
+    const entry = receipts.find(x => x.rcptId === req.params.rcptId);
+    if (!entry) return res.status(404).json({ error: 'Không tìm thấy lần thu này' });
+
+    const now = new Date().toISOString();
+    const payment = { ...booking.payment, receipts: receipts.filter(x => x.rcptId !== req.params.rcptId) };
+    recomputePaid(payment);
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { payment, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'PAYMENT_DELETED', bookingId: req.params.id,
+      from: `${entry.amount}|${entry.method}`, by: req.user.username, at: now });
+    res.json({ message: 'Đã xoá lần thu', payment, collected: receiptsTotal(payment) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -459,6 +530,11 @@ router.get('/:id/brief', ...requirePerm('bookings:read'), async (req, res) => {
     if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
 
     const deadline = new Date(Date.now() + 4*3600000).toLocaleString('vi-VN');
+    const vnd = n => Number(n || 0).toLocaleString('vi-VN');
+    const collected = collectedOf(b);
+    const payLine = b.payment.paid ? '✅ Đã TT đủ'
+      : collected > 0 ? `🟡 Đã thu ${vnd(collected)}đ / ${vnd(b.payment.amount)}đ — còn thiếu ${vnd(Math.max(0, b.payment.amount - collected))}đ`
+      : `⚠️ Chưa thu — ${vnd(b.payment.amount)}đ`;
     const brief = [
       '═══════════════════════════════════════',
       'BOOKING BRIEF — HỆ THỐNG CTY 2',
@@ -475,7 +551,7 @@ router.get('/:id/brief', ...requirePerm('bookings:read'), async (req, res) => {
       '───────────────────────────────────────',
       `Yêu cầu ĐB : ${b.specialReqs || 'Không có'}`,
       `Loại đơn   : ${b.type}`,
-      `Thanh toán : ${b.payment.paid ? '✅ Đã TT đủ' : `⚠️ ${b.payment.amount.toLocaleString('vi-VN')}đ`}`,
+      `Thanh toán : ${payLine}`,
       ...(b.type === 'WELLNESS' ? [
         '───────────────────────────────────────',
         'WELLNESS INFO:',

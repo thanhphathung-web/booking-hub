@@ -72,7 +72,10 @@ async function lookup() {
         <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block">Số khách</span><strong>${b.adults} người lớn${b.children ? ' + ' + b.children + ' trẻ em' : ''}</strong></div>
         <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block">Người đặt</span><strong>${esc(b.customerName)}</strong></div>
         <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block">Thanh toán</span>
-          <strong class="${b.payment.paid ? 'text-green-600' : 'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : Number(b.payment.amount).toLocaleString('vi-VN') + 'đ — chưa thanh toán'}</strong></div>
+          <strong class="${b.payment.paid ? 'text-green-600' : b.payment.collected > 0 ? 'text-amber-600' : 'text-orange-500'}">${
+            b.payment.paid ? '✅ Đã thanh toán đủ'
+            : b.payment.collected > 0 ? `Đã thanh toán ${Number(b.payment.collected).toLocaleString('vi-VN')}đ — còn lại ${Number(b.payment.remaining).toLocaleString('vi-VN')}đ`
+            : Number(b.payment.amount).toLocaleString('vi-VN') + 'đ — chưa thanh toán'}</strong></div>
         ${b.specialReqs ? `<div class="bg-gray-50 rounded-lg p-3 col-span-2"><span class="text-gray-500 text-xs block">Yêu cầu đặc biệt</span><strong>${esc(b.specialReqs)}</strong></div>` : ''}
       </div>
       <h3 class="text-sm font-semibold text-gray-700 mb-2">Hành trình đơn hàng</h3>

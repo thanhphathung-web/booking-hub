@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
+const { collectedOf } = require('../services/payments');
 
 // Post Analysis (giai đoạn 6): lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC
 // Chỉ tính tour COMPLETED — tour chưa xong chưa quyết toán được
@@ -100,7 +101,10 @@ router.get('/revenue', ...requirePerm('finance:read'), async (req, res) => {
       const cost = (b.expenses || []).reduce((s, e) => s + (e.amount || 0), 0);
       m.tours++; m.pax += (b.adults || 0) + (b.children || 0);
       m.revenue += amount;
-      if (b.payment?.paid) m.collected += amount; else m.pending += amount;
+      // Đã thu = tổng receipts (booking cũ chưa có receipts thì theo cờ paid)
+      const collected = collectedOf(b);
+      m.collected += collected;
+      m.pending += Math.max(0, amount - collected);
       m.cost += cost;
     }
     for (const m of months) m.profit = m.revenue - m.cost;

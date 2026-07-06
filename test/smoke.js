@@ -98,6 +98,37 @@ async function login(username, password) {
     r = await req('PATCH', `/api/bookings/${bid}/payment`, { token: ketoan, body: { paid: true } });
     check('KETOAN cập nhật payment → OK', r.status === 200);
 
+    console.log('\n— Tiền cọc / thu từng đợt —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Coc 2N1Đ', tourDate: '2030-07-01', adults: 2,
+        customer: { name: 'Khach Coc', phone: '0900000021' },
+        payment: { amount: 8000000 },
+      }});
+      const cocId = r.data.booking.bookingId;
+      r = await req('POST', `/api/bookings/${cocId}/payments`, { token: nvdh, body: { amount: 1000000 } });
+      check('NVDH ghi nhận thu tiền → 403', r.status === 403);
+      r = await req('POST', `/api/bookings/${cocId}/payments`, { token: ketoan,
+        body: { amount: 3000000, method: 'CASH', note: 'Cọc 3tr' } });
+      check('KETOAN thu cọc 3tr → 201, chưa đủ', r.status === 201 && r.data?.payment?.paid === false, JSON.stringify(r.data));
+      check('collected 3tr, còn thiếu 5tr', r.data?.collected === 3000000 && r.data?.remaining === 5000000);
+      r = await req('POST', '/api/lookup', { body: { bookingId: cocId, phone: '0900000021' } });
+      check('khách tra cứu thấy đã thanh toán 3tr / còn lại 5tr',
+        r.data?.booking?.payment?.collected === 3000000 && r.data?.booking?.payment?.remaining === 5000000);
+      r = await req('POST', `/api/bookings/${cocId}/payments`, { token: ketoan, body: { amount: 5000000 } });
+      check('thu nốt 5tr → paid tự thành true', r.data?.payment?.paid === true);
+      const rcpt2 = r.data?.receipt?.rcptId;
+      r = await req('GET', `/api/bookings/${cocId}`, { token: ceo });
+      check('booking lưu 2 lần thu', (r.data?.booking?.payment?.receipts || []).length === 2);
+      r = await req('DELETE', `/api/bookings/${cocId}/payments/${rcpt2}`, { token: ketoan });
+      check('xoá lần thu → paid tính lại thành false', r.status === 200 && r.data?.payment?.paid === false
+        && r.data?.collected === 3000000, JSON.stringify(r.data));
+      r = await req('PATCH', `/api/bookings/${cocId}/payment`, { token: ketoan, body: { paid: true } });
+      check('có receipts thì không toggle paid tay được (paid vẫn suy ra = false)', r.data?.payment?.paid === false);
+      r = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('stats có dueSoonUnpaid', typeof r.data?.dueSoonUnpaid === 'number');
+    }
+
     console.log('\n— Webhook CTY2 —');
     r = await req('POST', '/api/webhook/bookings', { key: 'sai-key', body: {} });
     check('webhook key sai → 401', r.status === 401);

@@ -104,8 +104,14 @@ booking-hub/
   assignedTo: String,      // username NVDH
   wcAssigned: String,      // username WC (Wellness Coordinator)
   payment: {
-    amount: Number,        // VNĐ
-    paid: Boolean
+    amount: Number,        // VNĐ — tổng tiền đơn
+    paid: Boolean,         // có receipts thì LUÔN suy ra từ tổng đã thu ≥ amount (không toggle tay);
+                           // booking cũ chưa có receipts giữ cờ paid thủ công (legacy)
+    receipts: [{           // các lần thu tiền khách (cọc / trả nốt)
+      rcptId, amount, method,   // CASH|BANK|CARD|OTHER
+      date,                     // YYYY-MM-DD
+      note, by, name, at
+    }]
   },
   source: String,          // WEBSITE|PLATFORM|ADMIN|DIRECT
   notes: [{ text, by, name, at }],
@@ -144,12 +150,17 @@ GET  /api/auth/me          header: Bearer token → {user}
 ### Bookings
 ```
 GET    /api/bookings             query: ?status=&type=&search=
-GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness}
+GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent,
+                                    dueSoonUnpaid (tour KH trong 3 ngày chưa thu đủ — card đỏ trên dashboard)}
 GET    /api/bookings/:id
 POST   /api/bookings             body: booking object
 PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs/wellness (bookings:update;
                                  chặn khi COMPLETED/CANCELLED; đổi tourDate tự tính lại deadline checklist chưa done)
-PATCH  /api/bookings/:id/payment body: {amount?, paid?} — finance:payment (CEO/KETOAN)
+PATCH  /api/bookings/:id/payment body: {amount?, paid?} — finance:payment (CEO/KETOAN); có receipts thì paid bị suy ra lại
+POST   /api/bookings/:id/payments          body: {amount, method?, date?, note?} — ghi 1 lần thu (finance:payment);
+                                           thu đủ tự set paid=true; chặn khi CANCELLED
+DELETE /api/bookings/:id/payments/:rcptId  — xoá lần thu ghi nhầm (finance:payment), paid tính lại
+                                           Helper dùng chung: src/services/payments.js (collectedOf/receiptsTotal/recomputePaid)
 PATCH  /api/bookings/:id/status  body: {status, note?}
 PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?, force?} — NVDH trùng lịch (theo số ngày tour)
                                  → 409 {conflicts}; force=true để vẫn phân công (UI hiện confirm)
@@ -338,7 +349,7 @@ router.post('/something', ...requirePerm('bookings:create'), handler);
 node server.js
 # → http://localhost:3000
 
-# Smoke test (30 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
+# Smoke test (71 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
 npm test
 
 # Test API nhanh
@@ -392,13 +403,15 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Sửa booking + cập nhật thanh toán (đổi tourDate tự tính lại deadline checklist)
 - [x] Chống brute-force login (5 sai/15min theo IP+username → khoá 15min; trust proxy cho Railway)
 - [x] Audit Log viewer (CEO) — giai đoạn 7 Internal Audit
-- [x] Smoke test 34 case (`npm test`)
+- [x] Smoke test 71 case (`npm test`)
 - [x] Báo cáo doanh thu theo tháng (server-side, chọn năm, xuất CSV/Excel)
 - [x] Backup tự động 02:00 qua email + tải thủ công + script khôi phục
 - [x] CRM khách hàng: gom theo SĐT, phân hạng VIP/Thân thiết/Mới, lịch sử + ghi chú chăm sóc
 - [x] Lịch tour calendar tháng + chống trùng lịch NVDH (409 + force override)
 - [x] Sổ công nợ NCC: khoản chi gắn NCC + hạn trả, gom theo NCC, cảnh báo quá hạn, KETOAN đánh dấu đã trả
 - [x] Trang tra cứu công khai /tracuu cho khách (mã đơn + SĐT, rate limit, chỉ trường an toàn)
+- [x] Tiền cọc / thu từng đợt: receipts per booking, paid tự suy ra, cảnh báo "sắp KH chưa thu đủ",
+      báo cáo đã thu/chờ thu + CRM + brief + /tracuu đều tính theo tổng thực thu
 
 ## Tính năng chưa có (backlog)
 

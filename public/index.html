@@ -180,7 +180,7 @@
         <button onclick="applyDateRange()" class="bg-blue-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-800 transition">Lọc</button>
         <button id="clearRangeBtn" onclick="clearDateRange()" class="hidden text-xs border border-gray-300 text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-50 transition">✕ Xoá lọc</button>
       </div>
-      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8" id="statCards"></div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8" id="statCards"></div>
 
       <!-- Việc của tôi -->
       <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
@@ -478,6 +478,8 @@
           <option value="STATUS_CHANGED">Đổi trạng thái</option>
           <option value="CHECKLIST_TICK">Tick checklist</option>
           <option value="PAYMENT_UPDATED">Cập nhật thanh toán</option>
+          <option value="PAYMENT_RECEIVED">Thu tiền khách</option>
+          <option value="PAYMENT_DELETED">Xoá lần thu</option>
         </select>
         <span id="auditCount" class="text-xs text-gray-400 ml-auto"></span>
       </div>
@@ -940,7 +942,7 @@ async function loadDashboard(days, from, to) {
 
   try {
     const stats = await api(`/bookings/stats${q}`);
-    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent } = stats;
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid } = stats;
 
     // Urgent banner
     const banner = document.getElementById('urgentBanner');
@@ -958,6 +960,7 @@ async function loadDashboard(days, from, to) {
       { label:'Đang thực hiện',    value: inProgress+confirmed,color:'bg-teal-600',   icon:'🚀', filter:'IN_PROGRESS' },
       { label:'Hoàn thành',        value: completed,           color:'bg-green-600',  icon:'✅', filter:'COMPLETED' },
       { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
+      { label:'Sắp KH chưa thu đủ',value: dueSoonUnpaid ?? 0,  color:'bg-rose-700',   icon:'⏳', filter:null, filterPaid:'false' },
     ];
     document.getElementById('statCards').innerHTML = cards.map(c => `
       <div onclick="${c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
@@ -1232,9 +1235,7 @@ function renderTable(bookings) {
             </td>
             <td class="px-4 py-3">${b.type === 'WELLNESS' ? '<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">WELLNESS</span>' : '<span class="text-xs text-gray-400">STD</span>'}</td>
             <td class="px-4 py-3">
-              ${b.payment.paid
-                ? '<span class="text-xs text-green-600 font-semibold">✅ TT đủ</span>'
-                : `<span class="text-xs text-orange-500 font-semibold">⚠️ ${Number(b.payment.amount).toLocaleString('vi-VN')}đ</span>`}
+              ${payBadge(b)}
             </td>
             <td class="px-4 py-3">${statusBadge(b.status)}</td>
             <td class="px-4 py-3 text-xs text-gray-500">${esc(b.assignedTo) || '<span class="text-gray-300">—</span>'}</td>
@@ -1307,7 +1308,7 @@ async function showDetail(id) {
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Nguồn</span><strong>${esc(b.source)}</strong></div>
               <div class="bg-gray-50 rounded-lg p-3 col-span-2"><span class="text-gray-500 text-xs block mb-0.5">Yêu cầu đặc biệt</span><strong class="${b.specialReqs?'text-orange-600':''}">${esc(b.specialReqs)||'Không có'}</strong></div>
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">Thanh toán</span>
-                <strong class="${b.payment.paid?'text-green-600':'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : '⚠️ '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</strong>
+                <strong class="${b.payment.paid?'text-green-600':payCollected(b)>0?'text-amber-600':'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : payCollected(b) > 0 ? '🟡 Đã thu '+payCollected(b).toLocaleString('vi-VN')+'đ / '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ' : '⚠️ '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</strong>
               </div>
               <div class="bg-gray-50 rounded-lg p-3"><span class="text-gray-500 text-xs block mb-0.5">NVDH (Cty1)</span><strong>${esc(b.assignedTo)||'<span class="text-gray-300">Chưa phân công</span>'}</strong></div>
               ${b.type==='WELLNESS' ? `
@@ -1404,14 +1405,10 @@ async function showDetail(id) {
             </div>
           </div>
 
-          <!-- Quick payment toggle -->
+          <!-- Thanh toán: tiền cọc / thu từng đợt -->
           <div class="bg-white rounded-xl shadow-sm p-6">
-            <h4 class="font-semibold text-gray-700 mb-3">Thanh toán</h4>
-            <div class="flex items-center justify-between">
-              <span class="text-sm ${b.payment.paid ? 'text-green-600 font-semibold' : 'text-orange-500'}">${b.payment.paid ? '✅ Đã thanh toán đủ' : '⚠️ Chưa thanh toán: '+Number(b.payment.amount).toLocaleString('vi-VN')+'đ'}</span>
-              ${!b.payment.paid && ['CEO','KETOAN'].includes(USER.role) ? `<button data-id="${b.bookingId}" onclick="markPaid(this.dataset.id)"
-                class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition">✅ Đánh dấu đã TT</button>` : ''}
-            </div>
+            <h4 class="font-semibold text-gray-700 mb-3">💳 Thanh toán</h4>
+            ${renderPayments(b)}
           </div>
 
           ${renderExpenses(b)}
@@ -1528,10 +1525,80 @@ async function assignBooking(id, force = false) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
-async function markPaid(id) {
-  if (!confirm('Xác nhận khách đã thanh toán đủ?')) return;
+// ── Thanh toán: tiền cọc / thu từng đợt ───────────────────
+const PAY_METHOD_LABELS = { CASH:'💵 Tiền mặt', BANK:'🏦 Chuyển khoản', CARD:'💳 Thẻ', OTHER:'📦 Khác' };
+
+// Số đã thu: có receipts thì cộng receipts, booking cũ thì theo cờ paid
+function payCollected(b) {
+  const p = b.payment || {};
+  if ((p.receipts || []).length) return p.receipts.reduce((s, r) => s + (r.amount || 0), 0);
+  return p.paid ? (p.amount || 0) : 0;
+}
+
+function payBadge(b) {
+  const amount = Number(b.payment?.amount || 0);
+  const collected = payCollected(b);
+  if (b.payment?.paid) return '<span class="text-xs text-green-600 font-semibold">✅ TT đủ</span>';
+  if (collected > 0) return `<span class="text-xs text-amber-600 font-semibold">🟡 Còn thiếu ${Math.max(0, amount - collected).toLocaleString('vi-VN')}đ</span>`;
+  return `<span class="text-xs text-orange-500 font-semibold">⚠️ ${amount.toLocaleString('vi-VN')}đ</span>`;
+}
+
+function renderPayments(b) {
+  const amount = Number(b.payment?.amount || 0);
+  const receipts = b.payment?.receipts || [];
+  const collected = payCollected(b);
+  const remaining = Math.max(0, amount - collected);
+  const canPay = ['CEO','KETOAN'].includes(USER.role);
+  const pct = amount > 0 ? Math.min(100, Math.round(collected / amount * 100)) : 0;
+  return `
+    <div class="flex justify-between text-sm mb-1"><span class="text-gray-500">Tổng tiền</span><strong>${amount.toLocaleString('vi-VN')}đ</strong></div>
+    <div class="flex justify-between text-sm mb-1"><span class="text-gray-500">Đã thu</span><strong class="${b.payment.paid ? 'text-green-600' : 'text-amber-600'}">${collected.toLocaleString('vi-VN')}đ</strong></div>
+    <div class="flex justify-between text-sm mb-2"><span class="text-gray-500">Còn thiếu</span><strong class="${remaining > 0 ? 'text-orange-500' : 'text-green-600'}">${remaining.toLocaleString('vi-VN')}đ</strong></div>
+    <div class="h-2 bg-gray-100 rounded-full mb-3 overflow-hidden"><div class="h-full ${b.payment.paid ? 'bg-green-500' : 'bg-amber-400'}" style="width:${pct}%"></div></div>
+    ${receipts.length ? `<div class="space-y-1.5 mb-3">${receipts.map(rc => `
+      <div class="text-xs bg-gray-50 rounded-lg px-2.5 py-2">
+        <div class="flex items-center gap-2">
+          <span class="text-gray-400 whitespace-nowrap">${rc.date}</span>
+          <span>${PAY_METHOD_LABELS[rc.method] || rc.method}</span>
+          <strong class="ml-auto whitespace-nowrap">${Number(rc.amount).toLocaleString('vi-VN')}đ</strong>
+          ${canPay ? `<button data-b="${b.bookingId}" data-r="${rc.rcptId}" onclick="deleteReceipt(this.dataset.b, this.dataset.r)"
+            class="text-red-400 hover:text-red-600" title="Xoá lần thu này">✕</button>` : ''}
+        </div>
+        ${rc.note ? `<div class="text-gray-400 mt-0.5">${esc(rc.note)} — ${esc(rc.name || rc.by)}</div>` : `<div class="text-gray-400 mt-0.5">${esc(rc.name || rc.by)}</div>`}
+      </div>`).join('')}</div>`
+      : (b.payment.paid ? '<p class="text-xs text-green-600 mb-3">Đã đánh dấu thanh toán đủ (chưa tách từng lần thu)</p>'
+                        : '<p class="text-xs text-gray-400 mb-3">Chưa ghi nhận lần thu nào</p>')}
+    ${canPay && remaining > 0 ? `
+      <div class="border-t pt-3 space-y-2">
+        <div class="flex gap-2">
+          <input id="pay-amount" type="number" min="1" class="input text-sm flex-1" placeholder="Số tiền" value="${remaining}"/>
+          <select id="pay-method" class="input text-sm w-36">
+            <option value="BANK">🏦 Chuyển khoản</option><option value="CASH">💵 Tiền mặt</option>
+            <option value="CARD">💳 Thẻ</option><option value="OTHER">📦 Khác</option>
+          </select>
+        </div>
+        <input id="pay-note" class="input text-sm w-full" placeholder="Ghi chú (VD: cọc 50%)"/>
+        <button data-id="${b.bookingId}" onclick="addReceipt(this.dataset.id)"
+          class="w-full bg-green-700 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-600 transition">＋ Ghi nhận thu tiền</button>
+      </div>` : ''}`;
+}
+
+async function addReceipt(id) {
+  const amount = parseInt(document.getElementById('pay-amount').value) || 0;
+  const method = document.getElementById('pay-method').value;
+  const note = document.getElementById('pay-note').value.trim();
+  if (amount <= 0) return toast('Nhập số tiền thu', 'error');
   try {
-    const res = await api(`/bookings/${id}/payment`, { method:'PATCH', body: JSON.stringify({ paid: true }) });
+    const res = await api(`/bookings/${id}/payments`, { method:'POST', body: JSON.stringify({ amount, method, note }) });
+    toast(res.message);
+    showDetail(id);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteReceipt(id, rcptId) {
+  if (!confirm('Xoá lần thu này? Số đã thu sẽ tính lại.')) return;
+  try {
+    const res = await api(`/bookings/${id}/payments/${rcptId}`, { method:'DELETE' });
     toast(res.message);
     showDetail(id);
   } catch(e) { toast(e.message, 'error'); }
@@ -2188,6 +2255,7 @@ const ACTIVITY_LABELS = {
   BOOKING_CREATED: '🆕 Tạo booking',   BOOKING_UPDATED: '✏️ Sửa booking',
   STATUS_CHANGED:  '🔄 Đổi trạng thái', CHECKLIST_TICK: '✅ Tick checklist',
   PAYMENT_UPDATED: '💳 Thanh toán',
+  PAYMENT_RECEIVED: '💰 Thu tiền khách', PAYMENT_DELETED: '↩️ Xoá lần thu',
 };
 
 async function loadAudit() {

@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
+const { collectedOf } = require('../services/payments');
 
 // CRM khách hàng — hồ sơ gom từ bookings theo SĐT (không lưu trùng dữ liệu),
 // customers.db chỉ chứa phần bổ sung: ghi chú chăm sóc
@@ -29,7 +30,7 @@ function aggregate(bookings) {
     c.bookings++;
     c.pax += (b.adults || 0) + (b.children || 0);
     c.totalValue += b.payment?.amount || 0;
-    if (b.payment?.paid) c.totalPaid += b.payment?.amount || 0;
+    c.totalPaid += collectedOf(b);
     if (!c.lastTourDate || b.tourDate > c.lastTourDate) c.lastTourDate = b.tourDate;
     if (b.type === 'WELLNESS') c.wellness = true;
     if (b.tourDate >= today && b.status !== 'COMPLETED') c.upcoming = true;

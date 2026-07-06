@@ -36,7 +36,7 @@ async function createBooking(body, createdBy) {
     statusHistory: [{ status: 'NEW', by: createdBy, at: now }],
     assignedTo: null,    // NVDH Cty1
     wcAssigned: null,    // WC Cty3 (for wellness)
-    payment: { amount: body.payment?.amount || 0, paid: body.payment?.paid || false },
+    payment: { amount: body.payment?.amount || 0, paid: body.payment?.paid || false, receipts: [] },
     source: body.source || 'ADMIN',  // ADMIN | WEBSITE | PLATFORM | DIRECT
     notes: [],
     expenses: [],       // sổ chi phí thực tế
