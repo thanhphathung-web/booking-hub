@@ -539,16 +539,25 @@
       </div>
       <!-- Việc điều hành tour (per-booking checklist) -->
       <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
-            🗓️ Việc điều hành tour
-            <span id="tt-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-normal"></span>
-          </h3>
+        <div class="mb-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+              🗓️ Việc điều hành tour
+              <span id="tt-badge" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-normal"></span>
+            </h3>
+            <div class="flex gap-1 flex-wrap">
+              <button onclick="filterTourTasks('all')" data-filter="all" class="tt-filter-btn bg-blue-900 text-white text-xs px-3 py-1.5 rounded-full border border-blue-900 transition">Tất cả</button>
+              <button onclick="filterTourTasks('overdue')" data-filter="overdue" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 transition">Quá hạn</button>
+              <button onclick="filterTourTasks('today')" data-filter="today" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 transition">Hôm nay</button>
+              <button onclick="filterTourTasks('upcoming')" data-filter="upcoming" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 transition">Sắp tới (7 ngày)</button>
+            </div>
+          </div>
           <div class="flex gap-1 flex-wrap">
-            <button onclick="filterTourTasks('all')" data-filter="all" class="tt-filter-btn bg-blue-900 text-white text-xs px-3 py-1.5 rounded-full border border-blue-900 transition">Tất cả</button>
-            <button onclick="filterTourTasks('overdue')" data-filter="overdue" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 transition">Quá hạn</button>
-            <button onclick="filterTourTasks('today')" data-filter="today" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 transition">Hôm nay</button>
-            <button onclick="filterTourTasks('upcoming')" data-filter="upcoming" class="tt-filter-btn text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 transition">Sắp tới (7 ngày)</button>
+            <button onclick="filterTourPhase('all')" data-phase="all" class="tt-phase-btn bg-gray-700 text-white text-xs px-3 py-1 rounded-full border border-gray-700 transition">Tất cả giai đoạn</button>
+            <button onclick="filterTourPhase('BOOKING')" data-phase="BOOKING" class="tt-phase-btn text-xs px-3 py-1 rounded-full border border-blue-200 text-blue-700 hover:bg-blue-100 transition">📋 Xác nhận đơn</button>
+            <button onclick="filterTourPhase('PREOPS')" data-phase="PREOPS" class="tt-phase-btn text-xs px-3 py-1 rounded-full border border-yellow-200 text-yellow-800 hover:bg-yellow-50 transition">🛠 Chuẩn bị</button>
+            <button onclick="filterTourPhase('OPS')" data-phase="OPS" class="tt-phase-btn text-xs px-3 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-50 transition">🚌 Trong tour</button>
+            <button onclick="filterTourPhase('POSTOPS')" data-phase="POSTOPS" class="tt-phase-btn text-xs px-3 py-1 rounded-full border border-purple-200 text-purple-700 hover:bg-purple-50 transition">📊 Sau tour</button>
           </div>
         </div>
         <div id="tour-tasks-list"><p class="text-gray-400 text-sm py-4 text-center">Đang tải…</p></div>
@@ -2855,6 +2864,7 @@ function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 let CL_ITEMS = [];
 let MY_TOUR_TASKS = [];
 let TT_ACTIVE_FILTER = 'all';
+let TT_ACTIVE_PHASE  = 'all';
 
 async function loadChecklist() {
   loadTourTasks();
@@ -2923,7 +2933,7 @@ async function loadTourTasks() {
     if (!badge) return;
     if (overdue > 0) { badge.textContent = overdue + ' quá hạn'; badge.classList.remove('hidden'); }
     else badge.classList.add('hidden');
-    renderTourTasks(TT_ACTIVE_FILTER);
+    renderTourTasks();
   } catch(e) { console.error(e); }
 }
 
@@ -2937,10 +2947,25 @@ function filterTourTasks(filter) {
     b.classList.toggle('text-gray-600', !active);
     b.classList.toggle('border-gray-200', !active);
   });
-  renderTourTasks(filter);
+  renderTourTasks();
 }
 
-function renderTourTasks(filter) {
+function filterTourPhase(phase) {
+  TT_ACTIVE_PHASE = phase;
+  const phaseActiveClass = { BOOKING:'bg-blue-600', PREOPS:'bg-yellow-500', OPS:'bg-green-600', POSTOPS:'bg-purple-600' };
+  document.querySelectorAll('.tt-phase-btn').forEach(b => {
+    const active = b.dataset.phase === phase;
+    const col = phaseActiveClass[b.dataset.phase] || 'bg-gray-700';
+    b.classList.toggle(col, active);
+    b.classList.toggle('text-white', active);
+    b.classList.toggle('border-transparent', active);
+  });
+  renderTourTasks();
+}
+
+function renderTourTasks() {
+  const filter = TT_ACTIVE_FILTER;
+  const phase  = TT_ACTIVE_PHASE;
   const listEl = document.getElementById('tour-tasks-list');
   if (!listEl) return;
 
@@ -2948,13 +2973,16 @@ function renderTourTasks(filter) {
   const in7d  = new Date(Date.now() + 7*864e5).toISOString().slice(0, 10);
 
   let tasks = MY_TOUR_TASKS;
-  if (filter === 'overdue')  tasks = tasks.filter(t => t.overdue);
-  else if (filter === 'today')    tasks = tasks.filter(t => t.dueToday);
-  else if (filter === 'upcoming') tasks = tasks.filter(t => t.deadline && !t.overdue && !t.dueToday && t.deadline <= in7d);
+  if (filter === 'overdue')        tasks = tasks.filter(t => t.overdue);
+  else if (filter === 'today')     tasks = tasks.filter(t => t.dueToday);
+  else if (filter === 'upcoming')  tasks = tasks.filter(t => t.deadline && !t.overdue && !t.dueToday && t.deadline <= in7d);
+  if (phase !== 'all') tasks = tasks.filter(t => t.phase === phase);
 
   if (!tasks.length) {
-    const msgs = { all:'Không có việc nào cần làm 🎉', overdue:'Không có việc quá hạn 👍', today:'Không có việc đến hạn hôm nay', upcoming:'Không có việc đến hạn trong 7 ngày tới' };
-    listEl.innerHTML = `<p class="text-gray-400 text-sm py-6 text-center">${msgs[filter] || 'Không có việc'}</p>`;
+    const timeMsgs  = { all:'Không có việc nào cần làm 🎉', overdue:'Không có việc quá hạn 👍', today:'Không có việc đến hạn hôm nay', upcoming:'Không có việc đến hạn trong 7 ngày tới' };
+    const phaseNames = { BOOKING:'Xác nhận đơn', PREOPS:'Chuẩn bị', OPS:'Trong tour', POSTOPS:'Sau tour' };
+    const phaseSuffix = phase !== 'all' ? ` ở giai đoạn ${phaseNames[phase]}` : '';
+    listEl.innerHTML = `<p class="text-gray-400 text-sm py-6 text-center">${(timeMsgs[filter] || 'Không có việc').replace(' 🎉', phaseSuffix ? '' : ' 🎉')}${phaseSuffix}</p>`;
     return;
   }
 
