@@ -72,11 +72,11 @@ async function login(username, password) {
     r = await req('PATCH', `/api/bookings/${bid}/status`, { token: ceo, body: { status: 'CONFIRMED' } });
     check('CONFIRMED sinh giai đoạn PREOPS', (r.data?.booking?.checklist || []).some(i => i.code === 'PO-02'));
     const po02 = r.data.booking.checklist.find(i => i.code === 'PO-02');
-    check('PO-02 deadline = tourDate − 7', po02?.deadline === '2030-01-13', po02?.deadline);
+    check('PO-02 deadline = tourDate − 10', po02?.deadline === '2030-01-10', po02?.deadline);
 
     r = await req('PATCH', `/api/bookings/${bid}`, { token: ceo, body: { tourDate: '2030-02-20' } });
     const po02b = r.data?.booking?.checklist?.find(i => i.code === 'PO-02');
-    check('đổi tourDate → deadline tính lại', po02b?.deadline === '2030-02-13', po02b?.deadline);
+    check('đổi tourDate → deadline tính lại', po02b?.deadline === '2030-02-10', po02b?.deadline);
 
     r = await req('PATCH', `/api/bookings/${bid}/status`, { token: ceo, body: { status: 'IN_PROGRESS' } });
     check('IN_PROGRESS sinh OPS + POSTOPS', (r.data?.booking?.checklist || []).some(i => i.code === 'PT-08'));

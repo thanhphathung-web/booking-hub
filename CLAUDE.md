@@ -390,7 +390,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Notes nội bộ per booking
 - [x] Dashboard stats
 - [x] Quản lý User (CEO): tạo, khoá, xoá, đổi pass
-- [x] Checklist SOP điều hành tour per-booking (4 giai đoạn BC/PO/OP/PT, deadline tính từ tourDate, phân role)
+- [x] Checklist SOP điều hành tour per-booking (4 giai đoạn BC/PO/OP/PT, 52 items, deadline tính từ tourDate/createDate, phân role; T-14→T+14)
 - [x] Khối "Việc của tôi" trên dashboard + badge quá hạn trên sidebar
 - [x] Sổ chi phí thực tế per booking + lãi/lỗ tạm tính
 - [x] Daily Tour Report có cấu trúc (khi IN_PROGRESS)
