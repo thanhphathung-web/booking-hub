@@ -185,6 +185,15 @@
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8" id="statCards"></div>
 
+      <!-- Revenue mini-chart (CEO/KETOAN only) -->
+      <div id="dash-revenue-wrap" class="hidden bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-gray-700">💰 Doanh thu 6 tháng gần nhất</h3>
+          <a onclick="showPage('revenue')" class="text-xs text-blue-700 hover:underline cursor-pointer">Báo cáo chi tiết →</a>
+        </div>
+        <div id="dash-revenue-chart"><p class="text-gray-400 text-sm">Đang tải…</p></div>
+      </div>
+
       <!-- Việc của tôi -->
       <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div class="flex items-center justify-between mb-4">
@@ -264,11 +273,20 @@
         <!-- Advanced filters row -->
         <div class="flex flex-wrap gap-3 items-center">
           <span class="text-xs text-gray-500 font-medium">Ngày tour:</span>
-          <input type="date" id="tourFrom" class="input text-xs" style="width:auto" onchange="applyFilters()"/>
+          <input type="date" id="tourFrom" class="input text-xs" style="width:auto" onchange="clearQuickChips();applyFilters()"/>
           <span class="text-xs text-gray-400">→</span>
-          <input type="date" id="tourTo"   class="input text-xs" style="width:auto" onchange="applyFilters()"/>
+          <input type="date" id="tourTo"   class="input text-xs" style="width:auto" onchange="clearQuickChips();applyFilters()"/>
           <button onclick="clearAllFilters()" class="text-xs text-gray-400 hover:text-gray-700 underline ml-2">Xoá bộ lọc</button>
           <span id="filterResultCount" class="text-xs text-gray-500 ml-auto"></span>
+        </div>
+        <!-- Quick filter chips -->
+        <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+          <span class="text-xs text-gray-400 self-center">Nhanh:</span>
+          <button data-qf="today"    onclick="setQuickFilter('today')"    class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-700 transition">📅 Hôm nay KH</button>
+          <button data-qf="week"     onclick="setQuickFilter('week')"     class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-700 transition">🚀 7 ngày tới</button>
+          <button data-qf="new"      onclick="setQuickFilter('new')"      class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 hover:text-orange-700 transition">🆕 Chờ xác nhận</button>
+          <button data-qf="unpaid"   onclick="setQuickFilter('unpaid')"   class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-700 transition">💳 Chưa thu đủ</button>
+          <button data-qf="noassign" onclick="setQuickFilter('noassign')" class="qf-chip text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-orange-400 hover:text-orange-700 transition">👤 Chưa phân công</button>
         </div>
       </div>
 
@@ -329,7 +347,11 @@
           </div>
           <div>
             <label class="label">SĐT *</label>
-            <input id="f-cphone" class="input" placeholder="09xxxxxxxx"/>
+            <div class="relative">
+              <input id="f-cphone" class="input pr-8" placeholder="09xxxxxxxx" onblur="lookupCustomerCRM()"/>
+              <div id="f-crm-spin" class="hidden absolute right-2.5 top-2.5 w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <div id="f-crm-hint" class="hidden mt-1.5 text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 text-blue-700"></div>
           </div>
           <div class="col-span-2">
             <label class="label">Email</label>
@@ -978,7 +1000,7 @@ function showPage(page) {
   if (page === 'customers')  loadCustomers();
   if (page === 'calendar')   loadCalendar();
   if (page === 'payables')   loadPayables();
-  if (page === 'new-booking') fillProductSelect();
+  if (page === 'new-booking') { fillProductSelect(); document.getElementById('f-crm-hint')?.classList.add('hidden'); }
   if (page === 'checklist')  loadChecklist();
   if (page === 'opsboard')   loadOpsBoard();
   if (page === 'cl-summary') loadClSummary();
@@ -1093,6 +1115,45 @@ async function loadDashboard(days, from, to) {
       }).join('');
     }
   } catch(e) { console.error(e); }
+
+  // Revenue mini-chart (CEO/KETOAN only)
+  if (['CEO','KETOAN'].includes(USER?.role)) {
+    const wrap = document.getElementById('dash-revenue-wrap');
+    if (wrap) {
+      wrap.classList.remove('hidden');
+      try {
+        const yr  = new Date().getFullYear();
+        const rev = await api(`/reports/revenue?year=${yr}`);
+        const cur = new Date().getMonth(); // 0-indexed
+        const start = Math.max(0, cur - 5);
+        const bars  = rev.months.slice(start, cur + 1).map((m, i) => ({
+          label: `T${start + i + 1}`, revenue: m.revenue || 0, tours: m.tours || 0, collected: m.collected || 0
+        }));
+        const maxRev = Math.max(...bars.map(b => b.revenue), 1);
+        const fmtM = v => v >= 1e9 ? (v/1e9).toFixed(1)+'T' : v >= 1e6 ? Math.round(v/1e6)+'tr' : v >= 1e3 ? Math.round(v/1e3)+'k' : v ? String(v) : '0';
+        document.getElementById('dash-revenue-chart').innerHTML = `
+          <div class="flex items-end gap-2 h-28">
+            ${bars.map(b => {
+              const pct = b.revenue ? Math.max(Math.round(b.revenue/maxRev*100), 6) : 0;
+              return `<div class="flex-1 flex flex-col items-center gap-0.5">
+                <span class="text-xs text-gray-500 leading-none">${fmtM(b.revenue)}</span>
+                <div class="w-full bg-gray-100 rounded-t" style="height:80px;position:relative">
+                  <div class="absolute bottom-0 w-full bg-blue-500 rounded-t transition-all" style="height:${pct}%"></div>
+                </div>
+                <span class="text-xs font-semibold text-gray-600">${b.label}</span>
+                <span class="text-xs text-gray-400">${b.tours ? b.tours+'t' : '—'}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="mt-3 flex items-center gap-4 text-xs text-gray-500">
+            <span>Tổng DT ${yr}: <strong class="text-gray-800">${fmtM(rev.totals?.revenue||0)}</strong></span>
+            <span>Đã thu: <strong class="text-teal-700">${fmtM(rev.totals?.collected||0)}</strong></span>
+            <span>Tour hoàn thành: <strong class="text-gray-800">${rev.totals?.tours||0}</strong></span>
+          </div>`;
+      } catch(e) { document.getElementById('dash-revenue-wrap')?.classList.add('hidden'); }
+    }
+  }
+
   loadMyTasks();
 }
 
@@ -1207,6 +1268,66 @@ function clearAllFilters() {
   document.getElementById('paidFilter').value = '';
   document.getElementById('tourFrom').value = '';
   document.getElementById('tourTo').value = '';
+  clearQuickChips();
+  BOOKING_PAGE = 1;
+  loadBookings();
+}
+
+function clearQuickChips() {
+  window._quickExtraFilter = null;
+  document.querySelectorAll('.qf-chip').forEach(b =>
+    b.classList.remove('bg-blue-50','border-blue-500','text-blue-700','font-semibold',
+                        'bg-orange-50','border-orange-500','text-orange-700',
+                        'bg-red-50','border-red-500','text-red-700'));
+}
+
+function setQuickFilter(type) {
+  // reset all filters then apply preset
+  document.getElementById('searchInput').value = '';
+  document.querySelectorAll('.status-cb').forEach(cb => cb.checked = false);
+  document.getElementById('typeFilter').value = '';
+  document.getElementById('paidFilter').value = '';
+  document.getElementById('tourFrom').value = '';
+  document.getElementById('tourTo').value = '';
+  window._quickExtraFilter = null;
+
+  const today = new Date().toISOString().slice(0,10);
+  const in7d  = new Date(Date.now() + 7*86400000).toISOString().slice(0,10);
+  const activeStatuses = ['NEW','CONFIRMED','IN_PROGRESS'];
+
+  const colorMap = {
+    today:'blue', week:'blue', new:'orange', unpaid:'red', noassign:'orange'
+  };
+  const c = colorMap[type] || 'blue';
+  document.querySelectorAll('.qf-chip').forEach(b => {
+    b.classList.remove('bg-blue-50','border-blue-500','text-blue-700','font-semibold',
+                        'bg-orange-50','border-orange-500','text-orange-700',
+                        'bg-red-50','border-red-500','text-red-700');
+    if (b.dataset.qf === type)
+      b.classList.add(`bg-${c}-50`,`border-${c}-500`,`text-${c}-700`,'font-semibold');
+  });
+
+  if (type === 'today') {
+    document.getElementById('tourFrom').value = today;
+    document.getElementById('tourTo').value   = today;
+  } else if (type === 'week') {
+    document.getElementById('tourFrom').value = today;
+    document.getElementById('tourTo').value   = in7d;
+    activeStatuses.forEach(s => { const cb = document.querySelector(`.status-cb[value="${s}"]`); if (cb) cb.checked = true; });
+    document.getElementById('statusFilterLabel').textContent = '3 status';
+  } else if (type === 'new') {
+    const cb = document.querySelector('.status-cb[value="NEW"]');
+    if (cb) cb.checked = true;
+    document.getElementById('statusFilterLabel').textContent = 'NEW';
+  } else if (type === 'unpaid') {
+    document.getElementById('paidFilter').value = 'false';
+    activeStatuses.forEach(s => { const cb = document.querySelector(`.status-cb[value="${s}"]`); if (cb) cb.checked = true; });
+    document.getElementById('statusFilterLabel').textContent = '3 status';
+  } else if (type === 'noassign') {
+    window._quickExtraFilter = 'noassign';
+    activeStatuses.forEach(s => { const cb = document.querySelector(`.status-cb[value="${s}"]`); if (cb) cb.checked = true; });
+    document.getElementById('statusFilterLabel').textContent = '3 status';
+  }
   BOOKING_PAGE = 1;
   loadBookings();
 }
@@ -1226,8 +1347,9 @@ function buildBookingQuery() {
   if (paid !== '')     p.set('paid', paid);
   if (tourFrom)        p.set('tourFrom', tourFrom);
   if (tourTo)          p.set('tourTo', tourTo);
-  p.set('page', BOOKING_PAGE);
-  p.set('limit', PAGE_SIZE);
+  // noassign filter needs large batch for client-side filtering
+  if (window._quickExtraFilter === 'noassign') { p.set('limit', 200); }
+  else { p.set('page', BOOKING_PAGE); p.set('limit', PAGE_SIZE); }
   return p.toString();
 }
 
@@ -1237,9 +1359,16 @@ async function loadBookings() {
   try {
     const qs = buildBookingQuery();
     const data = await api(`/bookings?${qs}`);
-    ALL_BOOKINGS = data.bookings;
-    BOOKING_TOTAL = data.total;
-    BOOKING_TOTAL_PAGES = data.pages;
+    let bookings = data.bookings;
+
+    // Client-side extra filter (noassign)
+    if (window._quickExtraFilter === 'noassign') {
+      bookings = bookings.filter(b => !b.assignedTo);
+    }
+
+    ALL_BOOKINGS = bookings;
+    BOOKING_TOTAL = window._quickExtraFilter === 'noassign' ? bookings.length : data.total;
+    BOOKING_TOTAL_PAGES = 1;
 
     // Update status label
     const selected = [...document.querySelectorAll('.status-cb:checked')].map(c => c.value);
@@ -1248,9 +1377,13 @@ async function loadBookings() {
     else if (selected.length === 1) lbl.textContent = selected[0];
     else                            lbl.textContent = `${selected.length} status`;
 
-    document.getElementById('filterResultCount').textContent = `${data.total} kết quả`;
-    renderTable(data.bookings);
-    renderPagination(data.page, data.pages, data.total);
+    document.getElementById('filterResultCount').textContent = `${BOOKING_TOTAL} kết quả`;
+    renderTable(bookings);
+    if (window._quickExtraFilter === 'noassign') {
+      document.getElementById('paginationBar').innerHTML = '';
+    } else {
+      renderPagination(data.page, data.pages, data.total);
+    }
   } catch(e) {
     tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`;
   }
@@ -2331,6 +2464,33 @@ async function submitRating() {
     toast(res.message);
     loadSuppliers();
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── CRM phone lookup (new booking form) ───────────────────
+async function lookupCustomerCRM() {
+  const phone = (document.getElementById('f-cphone')?.value || '').trim();
+  const hint  = document.getElementById('f-crm-hint');
+  const spin  = document.getElementById('f-crm-spin');
+  if (!hint || !phone || phone.replace(/\D/g,'').length < 9) { hint?.classList.add('hidden'); return; }
+  try {
+    spin.classList.remove('hidden');
+    const data = await api(`/customers/${encodeURIComponent(phone)}`);
+    if (data.customer) {
+      const c = data.customer;
+      const nameEl  = document.getElementById('f-cname');
+      const emailEl = document.getElementById('f-cemail');
+      if (nameEl  && !nameEl.value  && c.name)  nameEl.value  = c.name;
+      if (emailEl && !emailEl.value && c.email) emailEl.value = c.email;
+      const tierLabel = c.tier === 'VIP' ? '⭐ VIP' : c.tier === 'THANTHIET' ? '❤️ Thân thiết' : '🆕 Mới';
+      const tours = data.history?.length || 0;
+      hint.innerHTML = `✅ Tìm thấy: <strong>${esc(c.name)}</strong> · ${tours} booking · Hạng: <strong>${tierLabel}</strong>`;
+      hint.classList.remove('hidden');
+    } else {
+      hint.innerHTML = '🆕 Khách mới — chưa có trong hệ thống';
+      hint.classList.remove('hidden');
+    }
+  } catch(e) { hint.classList.add('hidden'); }
+  finally    { spin.classList.add('hidden'); }
 }
 
 // ── New Booking form ──────────────────────────────────────
