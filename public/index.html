@@ -223,9 +223,12 @@
 
     <!-- BOOKING LIST -->
     <div id="page-bookings" class="page">
-      <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <h2 class="text-2xl font-bold text-gray-800">Danh sách Booking</h2>
-        <button onclick="showPage('new-booking')" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo mới</button>
+        <div class="flex gap-2">
+          <button onclick="exportBookingCSV()" class="text-xs border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">📥 Xuất CSV</button>
+          <button onclick="showPage('new-booking')" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo mới</button>
+        </div>
       </div>
 
       <!-- Filters row 1 -->
@@ -709,6 +712,23 @@
   </div>
 </div>
 
+<!-- Customer confirmation message modal -->
+<div id="modal-confirm-msg" class="hidden fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-bold text-gray-800">📨 Tin xác nhận gửi khách</h3>
+      <button onclick="closeModal('modal-confirm-msg')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    </div>
+    <textarea id="confirm-msg-text" rows="12"
+      class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 mb-4"></textarea>
+    <div class="flex gap-3">
+      <button onclick="copyConfirmMsg()" class="flex-1 bg-blue-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-800 transition">📋 Copy</button>
+      <button id="confirm-msg-zalo-btn" class="flex-1 bg-blue-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-600 transition">💬 Mở Zalo</button>
+      <button onclick="closeModal('modal-confirm-msg')" class="border border-gray-300 px-5 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODALS -->
 <div id="modalCreateUser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
@@ -1013,7 +1033,17 @@ async function loadStaff() {
   try {
     const data = await api('/users/staff');
     STAFF_LIST = data.staff;
+    loadNvdhWorkload(); // preload workload counts async, no await
   } catch(e) { /* non-critical */ }
+}
+
+async function loadNvdhWorkload() {
+  try {
+    const { bookings } = await api('/bookings?limit=200');
+    window._nvdhLoad = {};
+    bookings.filter(b => !['COMPLETED','CANCELLED'].includes(b.status))
+      .forEach(b => { if (b.assignedTo) window._nvdhLoad[b.assignedTo] = (window._nvdhLoad[b.assignedTo]||0)+1; });
+  } catch(e) { window._nvdhLoad = {}; }
 }
 
 function showPage(page) {
@@ -1601,8 +1631,13 @@ async function showDetail(id) {
     const nvdhList = STAFF_LIST.filter(s => ['NVDH','TPDH'].includes(s.role));
     const wcList   = STAFF_LIST.filter(s => s.role === 'WC');
 
+    const load = window._nvdhLoad || {};
     const nvdhOptions = `<option value="">-- Chọn NVDH --</option>` +
-      nvdhList.map(s => `<option value="${esc(s.username)}" ${b.assignedTo===s.username?'selected':''}>${esc(s.name)} (${s.username})</option>`).join('');
+      nvdhList.map(s => {
+        const n = load[s.username] || 0;
+        const tag = n ? ` · ${n} tour đang dẫn` : '';
+        return `<option value="${esc(s.username)}" ${b.assignedTo===s.username?'selected':''}>${esc(s.name)} (${s.username})${tag}</option>`;
+      }).join('');
     const wcOptions = `<option value="">-- Chọn WC --</option>` +
       wcList.map(s => `<option value="${esc(s.username)}" ${b.wcAssigned===s.username?'selected':''}>${esc(s.name)} (${s.username})</option>`).join('');
 
@@ -1628,6 +1663,7 @@ async function showDetail(id) {
                 ${statusBadge(b.status)}
                 ${['CEO','TPDH','NVDH'].includes(USER.role) && !['COMPLETED','CANCELLED'].includes(b.status)
                   ? `<button onclick="openEditBooking()" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">✏️ Sửa</button>` : ''}
+                ${['CONFIRMED','IN_PROGRESS'].includes(b.status) ? `<button onclick="openConfirmMsg()" class="text-xs border border-blue-300 text-blue-700 px-3 py-1 rounded-lg hover:bg-blue-50">📨 Xác nhận KH</button>` : ''}
                 <button onclick="cloneBooking(window._curBooking)" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50" title="Tạo booking mới với cùng khách hàng và sản phẩm">📋 Nhân bản</button>
                 <button onclick="printTourDossier('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In Tour File</button>
               </div>
@@ -2086,6 +2122,87 @@ async function refreshTaskBadge() {
 }
 
 // ── Print Tour Dossier ────────────────────────────────────
+// ── Customer Confirmation Message ─────────────────────────
+function openConfirmMsg() {
+  const b = window._curBooking;
+  if (!b) return;
+  const collected = (b.payment?.receipts||[]).reduce((s,r) => s + (r.amount||0), 0);
+  const remaining = (b.payment?.amount||0) - collected;
+  const payLine = b.payment?.paid
+    ? '✅ Đã thanh toán đủ'
+    : collected > 0
+      ? `🟡 Đã cọc ${collected.toLocaleString('vi-VN')}đ — còn ${remaining.toLocaleString('vi-VN')}đ`
+      : `⚠️ Chưa thanh toán — ${Number(b.payment?.amount||0).toLocaleString('vi-VN')}đ`;
+  const pax = `${b.adults} người lớn${b.children > 0 ? ' + ' + b.children + ' trẻ em' : ''}`;
+  const special = b.specialReqs ? `\n📝 Yêu cầu đặc biệt: ${b.specialReqs}` : '';
+  const wellness = b.type === 'WELLNESS' && b.wellness?.package
+    ? `\n🏥 Gói khám: ${b.wellness.package}${b.wellness.ncc ? ' — ' + b.wellness.ncc : ''}` : '';
+
+  const msg = `✅ XÁC NHẬN ĐẶT TOUR
+
+Xin chào ${b.customer.name},
+
+Chúng tôi xác nhận đơn đặt tour của bạn:
+
+🏝️ Tour: ${b.product}
+📅 Ngày khởi hành: ${b.tourDate}
+👥 Số khách: ${pax}
+🔖 Mã đơn: ${b.bookingId}${special}${wellness}
+
+💳 Thanh toán: ${payLine}
+
+Mọi thắc mắc vui lòng liên hệ chúng tôi.
+Trân trọng! 🙏`.trim();
+
+  document.getElementById('confirm-msg-text').value = msg;
+  // Zalo deep link
+  const phone = (b.customer.phone || '').replace(/\D/g,'');
+  const zaloBtn = document.getElementById('confirm-msg-zalo-btn');
+  if (phone) {
+    zaloBtn.onclick = () => window.open(`https://zalo.me/${phone}`, '_blank');
+    zaloBtn.classList.remove('hidden');
+  } else {
+    zaloBtn.classList.add('hidden');
+  }
+  document.getElementById('modal-confirm-msg').classList.remove('hidden');
+}
+function copyConfirmMsg() {
+  const ta = document.getElementById('confirm-msg-text');
+  navigator.clipboard.writeText(ta.value).then(() => toast('✅ Đã copy tin nhắn')).catch(() => {
+    ta.select(); document.execCommand('copy'); toast('✅ Đã copy tin nhắn');
+  });
+}
+
+// ── Export Booking List CSV ────────────────────────────────
+async function exportBookingCSV() {
+  try {
+    toast('Đang xuất dữ liệu…', 'info');
+    const qs = buildBookingQuery();
+    // replace pagination limit with large number
+    const bigQs = qs.replace(/limit=\d+/, 'limit=1000').replace(/&page=\d+/, '');
+    const { bookings } = await api(`/bookings?${bigQs}`);
+    const cols = ['Mã đơn','Tour','Ngày KH','Người lớn','Trẻ em','Tên KH','SĐT','Email','Loại','Status','Thanh toán','Đã thu','NVDH','Nguồn','Tạo lúc'];
+    const rows = bookings.map(b => {
+      const collected = (b.payment?.receipts||[]).reduce((s,r)=>s+(r.amount||0),0);
+      return [
+        b.bookingId, b.product, b.tourDate, b.adults, b.children,
+        b.customer?.name, b.customer?.phone, b.customer?.email,
+        b.type, b.status,
+        b.payment?.amount||0, collected,
+        b.assignedTo||'', b.source,
+        new Date(b.createdAt).toLocaleDateString('vi-VN'),
+      ];
+    });
+    const csv = [cols, ...rows].map(r => r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `bookings-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast(`✅ Xuất ${bookings.length} booking — mở bằng Excel`);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── Clone Booking ─────────────────────────────────────────
 function cloneBooking(b) {
   if (!b) return;
