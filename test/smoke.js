@@ -318,6 +318,59 @@ async function login(username, password) {
       check('thiếu khách → pax_manifest lại chặn GO', r.data?.readiness?.verdict === 'NO_GO');
     }
 
+    console.log('\n— Đặt dịch vụ NCC + xác nhận (Go/No-Go) —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour NCC Confirm 2N1Đ', tourDate: '2030-10-01', adults: 1,
+        customer: { name: 'Khach NCC', phone: '0900000041' },
+        payment: { amount: 5000000 },
+      }});
+      const sid = r.data.booking.bookingId;
+      check('booking mới có mảng services rỗng', Array.isArray(r.data.booking.services) && r.data.booking.services.length === 0);
+
+      r = await req('POST', `/api/bookings/${sid}/services`, { token: nvdh, body: { category: 'XE' } });
+      check('thêm dịch vụ thiếu mô tả → 400', r.status === 400);
+      r = await req('POST', `/api/bookings/${sid}/services`, { token: cs, body: { category: 'XE', desc: 'Xe' } });
+      check('CS (không có bookings:update) thêm dịch vụ → 403', r.status === 403);
+      r = await req('POST', `/api/bookings/${sid}/services`, { token: nvdh, body: { category: 'KHACHSAN', desc: 'KS ABC 3 phòng', nccId } });
+      check('NVDH thêm dịch vụ → 201, status REQUESTED', r.status === 201 && r.data.service.status === 'REQUESTED');
+      const svcId = r.data.service.svcId;
+
+      // Chuẩn bị mọi điều kiện GO khác
+      await req('POST', `/api/bookings/${sid}/passengers`, { token: nvdh, body: { fullName: 'KHACH NCC' } });
+      await req('PATCH', `/api/bookings/${sid}/status`, { token: ceo, body: { status: 'CONFIRMED' } });
+      for (const code of ['PO-02','PO-03','PO-07'])
+        await req('PATCH', `/api/bookings/${sid}/checklist/${code}`, { token: ceo, body: { done: true } });
+      await req('PATCH', `/api/bookings/${sid}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      await req('POST', `/api/bookings/${sid}/payments`, { token: ketoan, body: { amount: 5000000 } });
+
+      r = await req('GET', `/api/bookings/${sid}/readiness`, { token: ceo });
+      check('dịch vụ chưa xác nhận → NO_GO (services_confirmed chặn)',
+        r.data.readiness.verdict === 'NO_GO' && r.data.readiness.blocking.some(x => x.key === 'services_confirmed'),
+        JSON.stringify(r.data.readiness.blocking));
+
+      r = await req('PATCH', `/api/bookings/${sid}/services/${svcId}`, { token: nvdh, body: { status: 'CONFIRMED', voucherNo: 'KS-2030-01' } });
+      check('xác nhận dịch vụ (kèm voucher) → CONFIRMED + confirmedAt',
+        r.status === 200 && r.data.service.status === 'CONFIRMED' && !!r.data.service.confirmedAt);
+      r = await req('GET', `/api/bookings/${sid}/readiness`, { token: ceo });
+      check('xác nhận xong dịch vụ → GO', r.data.readiness.verdict === 'GO', JSON.stringify(r.data.readiness.blocking));
+
+      r = await req('PATCH', `/api/bookings/${sid}/services/${svcId}`, { token: nvdh, body: { status: 'BADSTATUS' } });
+      check('status dịch vụ không hợp lệ → 400', r.status === 400);
+      r = await req('DELETE', `/api/bookings/${sid}/services/${svcId}`, { token: nvdh });
+      check('xoá dịch vụ → OK', r.status === 200);
+
+      // Dashboard: tour cận ngày (trong 7N) còn dịch vụ REQUESTED
+      const soonDate = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cận Ngày', tourDate: soonDate, adults: 1,
+        customer: { name: 'Can Ngay', phone: '0900000042' } } });
+      const soonId = r.data.booking.bookingId;
+      await req('POST', `/api/bookings/${soonId}/services`, { token: nvdh, body: { category: 'XE', desc: 'Xe đón' } });
+      r = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('stats.unconfirmedSoon đếm tour cận ngày còn NCC chưa xác nhận', r.data.unconfirmedSoon >= 1, String(r.data.unconfirmedSoon));
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');
@@ -339,9 +392,10 @@ async function login(username, password) {
     {
       r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0900 000 001' } });
       check('tra cứu đúng mã + SĐT (khác định dạng) → 200', r.status === 200, JSON.stringify(r.data));
-      check('chỉ trả trường an toàn — không lộ checklist/expenses/costEstimate',
+      check('chỉ trả trường an toàn — không lộ checklist/expenses/costEstimate/passengers/services (PII)',
         r.data?.booking && !('checklist' in r.data.booking) && !('expenses' in r.data.booking)
-        && !('costEstimate' in r.data.booking) && !('notes' in r.data.booking));
+        && !('costEstimate' in r.data.booking) && !('notes' in r.data.booking)
+        && !('passengers' in r.data.booking) && !('services' in r.data.booking));
       check('có statusLabel tiếng Việt + timeline', !!r.data?.booking?.statusLabel && Array.isArray(r.data?.booking?.timeline));
       r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0999999999' } });
       check('SĐT sai → 404', r.status === 404);

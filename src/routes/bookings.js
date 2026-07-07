@@ -63,6 +63,7 @@ router.get('/stats', requireAuth, async (req, res) => {
     }
 
     const in3days = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
+    const in7days = new Date(Date.now() + 7*86400000).toISOString().slice(0,10);
     const today   = new Date().toISOString().slice(0,10);
     const [total, newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent] = await Promise.all([
       dbAsync.count('bookings', { ...base }),
@@ -78,7 +79,12 @@ router.get('/stats', requireAuth, async (req, res) => {
     // Tour khởi hành trong 3 ngày tới mà khách chưa thanh toán đủ — kế toán cần đòi gấp
     const dueSoonUnpaid = await dbAsync.count('bookings',
       { tourDate: { $gte: today, $lte: in3days }, status: { $nin: ['CANCELLED','COMPLETED'] }, 'payment.paid': false });
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid });
+    // Tour khởi hành trong 7 ngày tới còn dịch vụ NCC chưa xác nhận — nguy cơ "tưởng đã đặt"
+    const soonBookings = await dbAsync.find('bookings',
+      { tourDate: { $gte: today, $lte: in7days }, status: { $nin: ['CANCELLED','COMPLETED'] } });
+    const unconfirmedSoon = soonBookings.filter(b =>
+      (b.services || []).some(s => s.status === 'REQUESTED')).length;
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -619,6 +625,91 @@ router.delete('/:id/passengers/:paxId', ...requirePerm('bookings:update'), async
     await dbAsync.update('bookings', { bookingId: req.params.id },
       { $set: { passengers, updatedAt: new Date().toISOString() } });
     res.json({ message: 'Đã xoá hành khách' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Đặt dịch vụ NCC + trạng thái xác nhận ─────────────────
+// Chống lỗi kinh điển "tưởng đã đặt rồi": mỗi dịch vụ đi qua REQUESTED → CONFIRMED (số voucher/PO) → CANCELLED.
+// Đây là lớp giữ chỗ (khác sổ chi phí/công nợ — chỉ theo dõi tiền). Nuôi Go/No-Go + cảnh báo dashboard.
+const SERVICE_CATEGORIES = ['XE', 'KHACHSAN', 'ANUONG', 'VE', 'BAOHIEM', 'YTE', 'KHAC'];
+const SERVICE_STATUSES   = ['REQUESTED', 'CONFIRMED', 'CANCELLED'];
+
+router.post('/:id/services', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const { category = 'KHAC', desc, nccId = null, note = '' } = req.body;
+    if (!desc || !desc.trim()) return res.status(400).json({ error: 'Thiếu mô tả dịch vụ' });
+    if (!SERVICE_CATEGORIES.includes(category))
+      return res.status(400).json({ error: `Loại dịch vụ không hợp lệ. Dùng: ${SERVICE_CATEGORIES.join(', ')}` });
+
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['COMPLETED', 'CANCELLED'].includes(booking.status))
+      return res.status(409).json({ error: `Booking đã ${booking.status} — không thêm dịch vụ được nữa` });
+
+    const now = new Date().toISOString();
+    const svc = {
+      svcId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      category, desc: desc.trim(), nccId: nccId || null, status: 'REQUESTED',
+      voucherNo: '', confirmedBy: null, confirmedName: null, confirmedAt: null,
+      note: String(note).trim(), by: req.user.username, name: req.user.name, at: now,
+    };
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { updatedAt: now }, $push: { services: svc } });
+    await dbAsync.insert('activity', { type: 'SVC_ADDED', bookingId: req.params.id,
+      to: svc.desc, by: req.user.username, at: now });
+    res.status(201).json({ message: 'Đã thêm dịch vụ cần đặt', service: svc });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/:id/services/:svcId', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const services = booking.services || [];
+    const svc = services.find(x => x.svcId === req.params.svcId);
+    if (!svc) return res.status(404).json({ error: 'Không tìm thấy dịch vụ' });
+
+    const now = new Date().toISOString();
+    if (req.body.category !== undefined) {
+      if (!SERVICE_CATEGORIES.includes(req.body.category))
+        return res.status(400).json({ error: 'Loại dịch vụ không hợp lệ' });
+      svc.category = req.body.category;
+    }
+    if (req.body.desc !== undefined) {
+      const d = String(req.body.desc).trim();
+      if (!d) return res.status(400).json({ error: 'Mô tả không được trống' });
+      svc.desc = d;
+    }
+    if (req.body.nccId     !== undefined) svc.nccId     = req.body.nccId || null;
+    if (req.body.note      !== undefined) svc.note      = String(req.body.note).trim();
+    if (req.body.voucherNo !== undefined) svc.voucherNo = String(req.body.voucherNo).trim();
+    if (req.body.status    !== undefined) {
+      if (!SERVICE_STATUSES.includes(req.body.status))
+        return res.status(400).json({ error: `Trạng thái không hợp lệ. Dùng: ${SERVICE_STATUSES.join(', ')}` });
+      svc.status = req.body.status;
+      if (svc.status === 'CONFIRMED') {
+        svc.confirmedBy = req.user.username; svc.confirmedName = req.user.name; svc.confirmedAt = now;
+      } else {
+        svc.confirmedBy = null; svc.confirmedName = null; svc.confirmedAt = null;
+      }
+    }
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { services, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'SVC_UPDATED', bookingId: req.params.id,
+      to: `${svc.desc}|${svc.status}`, by: req.user.username, at: now });
+    res.json({ message: 'Đã cập nhật dịch vụ', service: svc });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/services/:svcId', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const services = (booking.services || []).filter(x => x.svcId !== req.params.svcId);
+    if (services.length === (booking.services || []).length)
+      return res.status(404).json({ error: 'Không tìm thấy dịch vụ' });
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { services, updatedAt: new Date().toISOString() } });
+    res.json({ message: 'Đã xoá dịch vụ' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

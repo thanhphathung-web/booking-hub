@@ -40,6 +40,7 @@ async function createBooking(body, createdBy) {
     source: body.source || 'ADMIN',  // ADMIN | WEBSITE | PLATFORM | DIRECT
     notes: [],
     passengers: [],     // hồ sơ từng hành khách (tên/giấy tờ/y tế/liên hệ khẩn) — nuôi Go/No-Go + manifest
+    services: [],       // đặt dịch vụ NCC + trạng thái xác nhận (REQUESTED→CONFIRMED) — nuôi Go/No-Go
     expenses: [],       // sổ chi phí thực tế
     dailyReports: [],   // Daily Tour Report
     productId,          // sản phẩm gốc (nếu tạo từ catalog)

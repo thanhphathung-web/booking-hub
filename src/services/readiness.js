@@ -77,6 +77,15 @@ function assessReadiness(b) {
   add('insurance', 'Bảo hiểm du lịch (PO-07)', 'critical', itemDone(b, 'PO-07'),
     itemDone(b, 'PO-07') ? 'Đã mua' : 'Chưa mua');
 
+  // Dịch vụ NCC đã xác nhận (chỉ chấm khi có ghi nhận đặt dịch vụ) — chống "tưởng đã đặt"
+  const svcs = (b.services || []).filter(s => s.status !== 'CANCELLED');
+  if (svcs.length) {
+    const pending = svcs.filter(s => s.status !== 'CONFIRMED');
+    add('services_confirmed', 'Dịch vụ NCC đã xác nhận', 'critical', pending.length === 0,
+      pending.length ? `${pending.length}/${svcs.length} dịch vụ chưa NCC xác nhận`
+        : `${svcs.length} dịch vụ đã xác nhận`);
+  }
+
   const reconf = itemDone(b, 'PO-16') && itemDone(b, 'PO-17');
   add('reconfirm', 'Re-confirm xe + KS 24h (PO-16/17)', 'warn', reconf,
     reconf ? 'Đã re-confirm cận giờ' : 'Chưa re-confirm cận giờ');

@@ -889,6 +889,22 @@
   </div>
 </div>
 
+<div id="modalSvcConfirm" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <h3 class="text-lg font-bold mb-1">✅ Xác nhận dịch vụ NCC</h3>
+    <p id="svc-confirm-desc" class="text-sm text-gray-500 mb-4"></p>
+    <div class="space-y-3">
+      <div><label class="label">Số voucher / PO / mã xác nhận</label><input id="svc-voucher" class="input" placeholder="vd: KS-2024-0912, hoặc tên người xác nhận"/></div>
+      <div><label class="label">Ghi chú</label><input id="svc-confirm-note" class="input" placeholder="vd: đã gọi xác nhận, giữ 5 phòng"/></div>
+    </div>
+    <p class="text-xs text-gray-400 mt-3">💡 Ghi lại bằng chứng NCC đã giữ chỗ — tránh "tưởng đã đặt" khi tới nơi.</p>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitSvcConfirm()" class="bg-green-700 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-600">Xác nhận đã đặt</button>
+      <button onclick="closeModal('modalSvcConfirm')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalZaloFollowers" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
     <h3 class="text-lg font-bold mb-1">💬 Follower của Zalo OA</h3>
@@ -1143,7 +1159,7 @@ async function loadDashboard(days, from, to) {
 
   try {
     const stats = await api(`/bookings/stats${q}`);
-    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid } = stats;
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon } = stats;
 
     // Urgent banner
     const banner = document.getElementById('urgentBanner');
@@ -1162,6 +1178,7 @@ async function loadDashboard(days, from, to) {
       { label:'Hoàn thành',        value: completed,           color:'bg-green-600',  icon:'✅', filter:'COMPLETED' },
       { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
       { label:'Sắp KH chưa thu đủ',value: dueSoonUnpaid ?? 0,  color:'bg-rose-700',   icon:'⏳', filter:null, filterPaid:'false' },
+      { label:'NCC chưa xác nhận (7N)',value: unconfirmedSoon ?? 0, color:'bg-amber-600', icon:'🤝', filter:null },
     ];
     document.getElementById('statCards').innerHTML = cards.map(c => `
       <div onclick="${c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
@@ -1789,6 +1806,7 @@ async function showDetail(id) {
 
           ${renderTourChecklist(b)}
           ${renderPassengers(b)}
+          ${renderServices(b)}
           ${renderDailyReports(b)}
 
           <!-- Assign with dropdowns -->
@@ -2851,6 +2869,125 @@ async function delExpense(bookingId, expId) {
     await api(`/bookings/${bookingId}/expenses/${expId}`, { method:'DELETE' });
     toast('Đã xoá khoản chi', 'warn');
     showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Đặt dịch vụ NCC + trạng thái xác nhận ─────────────────
+const SVC_STATUS_META = {
+  REQUESTED: { label:'⏳ Chờ NCC xác nhận', cls:'bg-amber-100 text-amber-700' },
+  CONFIRMED: { label:'✅ Đã xác nhận',      cls:'bg-green-100 text-green-700' },
+  CANCELLED: { label:'✖ Đã huỷ',           cls:'bg-gray-100 text-gray-500 line-through' },
+};
+
+function renderServices(b) {
+  if (['CANCELLED'].includes(b.status)) return '';
+  const svcs = b.services || [];
+  const editable = canEditPax(b); // cùng quyền bookings:update + chưa đóng
+  const active = svcs.filter(s => s.status !== 'CANCELLED');
+  const confirmed = active.filter(s => s.status === 'CONFIRMED').length;
+  const allOk = active.length > 0 && confirmed === active.length;
+
+  const rows = svcs.map(s => {
+    const ncc = s.nccId ? SUPPLIERS_LIST.find(x => x.nccId === s.nccId) : null;
+    const m = SVC_STATUS_META[s.status] || SVC_STATUS_META.REQUESTED;
+    return `<div class="py-2 border-t border-gray-100 first:border-0">
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-xs flex-shrink-0">${EXPENSE_LABELS[s.category] || s.category}</span>
+        <span class="flex-1 min-w-0 truncate text-gray-800" title="${esc(s.desc)}">${esc(s.desc)}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${m.cls}">${m.label}</span>
+        ${editable ? `<button data-s="${s.svcId}" onclick="delService(this.dataset.s)" class="text-gray-300 hover:text-red-600 text-xs flex-shrink-0" title="Xoá">✕</button>` : ''}
+      </div>
+      <div class="flex items-center gap-2 pl-5 mt-0.5 flex-wrap">
+        ${ncc ? `<span class="text-xs text-gray-400">${esc(ncc.name)}</span>` : '<span class="text-xs text-gray-300">chưa gắn NCC</span>'}
+        ${s.status === 'CONFIRMED' && s.voucherNo ? `<span class="text-xs text-green-700 font-mono">📄 ${esc(s.voucherNo)}</span>` : ''}
+        ${s.status === 'CONFIRMED' && s.confirmedName ? `<span class="text-xs text-gray-400">bởi ${esc(s.confirmedName)}</span>` : ''}
+        ${editable && s.status !== 'CONFIRMED' ? `<button data-s="${s.svcId}" onclick="openSvcConfirm(this.dataset.s)" class="text-xs text-green-700 hover:underline font-semibold">✅ Xác nhận</button>` : ''}
+        ${editable && s.status === 'CONFIRMED' ? `<button data-s="${s.svcId}" onclick="setSvcStatus(this.dataset.s,'REQUESTED')" class="text-xs text-gray-400 hover:underline">↩ bỏ xác nhận</button>` : ''}
+        ${editable && s.status === 'REQUESTED' ? `<button data-s="${s.svcId}" onclick="setSvcStatus(this.dataset.s,'CANCELLED')" class="text-xs text-gray-400 hover:underline">huỷ</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const badge = !active.length
+    ? '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">chưa ghi dịch vụ</span>'
+    : allOk ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ đủ xác nhận</span>'
+    : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">${confirmed}/${active.length} xác nhận</span>`;
+
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h4 class="font-semibold text-gray-700">🤝 Đặt dịch vụ NCC</h4>
+        ${badge}
+      </div>
+      <p class="text-xs text-gray-400 mb-2">Theo dõi từng dịch vụ đã được NCC <strong>xác nhận giữ chỗ</strong> chưa (số voucher/PO) — chống "tưởng đã đặt rồi".</p>
+      ${svcs.length ? `<div class="border border-gray-100 rounded-lg px-3 mb-3">${rows}</div>`
+        : '<p class="text-gray-400 text-sm mb-3">Chưa ghi dịch vụ nào cần đặt</p>'}
+      ${editable ? `<div class="border-t pt-3 grid grid-cols-2 gap-2">
+        <select id="svc-cat" class="input text-sm">${Object.entries(EXPENSE_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <select id="svc-ncc" class="input text-sm"><option value="">— Chọn NCC —</option>${SUPPLIERS_LIST.map(s => `<option value="${s.nccId}">${esc(s.name)}</option>`).join('')}</select>
+        <input id="svc-desc" class="input text-sm col-span-2" placeholder="Mô tả dịch vụ * (vd: Xe 16 chỗ đón sân bay)"/>
+        <button onclick="addService('${b.bookingId}')" class="col-span-2 bg-teal-700 text-white py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 transition">+ Thêm dịch vụ cần đặt</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function addService(bookingId) {
+  const desc = document.getElementById('svc-desc').value.trim();
+  if (!desc) return toast('Nhập mô tả dịch vụ', 'warn');
+  try {
+    await api(`/bookings/${bookingId}/services`, { method:'POST', body: JSON.stringify({
+      category: document.getElementById('svc-cat').value,
+      nccId: document.getElementById('svc-ncc').value || null,
+      desc,
+    })});
+    toast('Đã thêm dịch vụ');
+    showDetail(bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function setSvcStatus(svcId, status) {
+  const b = window._curBooking;
+  if (status === 'CANCELLED' && !confirm('Huỷ dịch vụ này?')) return;
+  try {
+    await api(`/bookings/${b.bookingId}/services/${svcId}`, { method:'PATCH', body: JSON.stringify({ status }) });
+    showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function delService(svcId) {
+  const b = window._curBooking;
+  if (!confirm('Xoá dịch vụ này khỏi danh sách?')) return;
+  try {
+    await api(`/bookings/${b.bookingId}/services/${svcId}`, { method:'DELETE' });
+    toast('Đã xoá dịch vụ', 'warn');
+    showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+let SVC_CONFIRM_PENDING = null;
+function openSvcConfirm(svcId) {
+  const b = window._curBooking;
+  const svc = (b.services || []).find(x => x.svcId === svcId);
+  if (!svc) return;
+  SVC_CONFIRM_PENDING = svcId;
+  document.getElementById('svc-confirm-desc').textContent = svc.desc;
+  document.getElementById('svc-voucher').value = svc.voucherNo || '';
+  document.getElementById('svc-confirm-note').value = svc.note || '';
+  document.getElementById('modalSvcConfirm').classList.remove('hidden');
+  setTimeout(() => document.getElementById('svc-voucher').focus(), 60);
+}
+async function submitSvcConfirm() {
+  const b = window._curBooking;
+  if (!SVC_CONFIRM_PENDING) return;
+  const svcId = SVC_CONFIRM_PENDING;
+  const voucherNo = document.getElementById('svc-voucher').value.trim();
+  const note = document.getElementById('svc-confirm-note').value.trim();
+  closeModal('modalSvcConfirm'); SVC_CONFIRM_PENDING = null;
+  try {
+    await api(`/bookings/${b.bookingId}/services/${svcId}`, { method:'PATCH',
+      body: JSON.stringify({ status:'CONFIRMED', voucherNo, note }) });
+    toast('✅ Đã xác nhận dịch vụ');
+    showDetail(b.bookingId);
   } catch(e) { toast(e.message, 'error'); }
 }
 

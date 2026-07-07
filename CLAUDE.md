@@ -125,6 +125,13 @@ booking-hub/
     isLead,                           // trưởng đoàn (chỉ 1 người)
     by, name, at
   }],
+  services: [{             // đặt dịch vụ NCC + trạng thái xác nhận giữ chỗ — chống "tưởng đã đặt rồi"
+    svcId, category,                  // XE|KHACHSAN|ANUONG|VE|BAOHIEM|YTE|KHAC
+    desc, nccId,
+    status,                           // REQUESTED → CONFIRMED → (CANCELLED)
+    voucherNo,                        // số voucher/PO/mã xác nhận từ NCC (khi CONFIRMED)
+    confirmedBy, confirmedName, confirmedAt, note, by, name, at
+  }],                                 // lớp GIỮ CHỖ (khác expenses — chỉ theo dõi tiền/công nợ)
   checklist: [{            // checklist SOP tour — sinh tự động theo status (src/db/tourChecklist.js)
     code,                  // BC-xx|PO-xx|OP-xx|PT-xx
     title, phase,          // BOOKING|PREOPS|OPS|POSTOPS
@@ -161,7 +168,8 @@ GET  /api/auth/me          header: Bearer token → {user}
 ```
 GET    /api/bookings             query: ?status=&type=&search=
 GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent,
-                                    dueSoonUnpaid (tour KH trong 3 ngày chưa thu đủ — card đỏ trên dashboard)}
+                                    dueSoonUnpaid (tour KH trong 3 ngày chưa thu đủ — card đỏ trên dashboard),
+                                    unconfirmedSoon (tour KH trong 7 ngày còn dịch vụ NCC chưa xác nhận — card 🤝)}
 GET    /api/bookings/:id
 POST   /api/bookings             body: booking object
 PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs/wellness (bookings:update;
@@ -181,11 +189,16 @@ POST   /api/bookings/:id/passengers          body: {fullName*, phone?, gender?, 
                                              emergencyPhone?, emergencyRel?, isLead?} — bookings:update; chặn COMPLETED/CANCELLED
 PATCH  /api/bookings/:id/passengers/:paxId   sửa 1 hành khách (bookings:update)
 DELETE /api/bookings/:id/passengers/:paxId   xoá 1 hành khách (bookings:update)
+POST   /api/bookings/:id/services            body: {category, desc*, nccId?, note?} → status REQUESTED (bookings:update)
+PATCH  /api/bookings/:id/services/:svcId     body: {status?, voucherNo?, desc?, category?, nccId?, note?}
+                                             status=CONFIRMED tự ghi confirmedBy/At; chống lỗi "tưởng đã đặt"
+DELETE /api/bookings/:id/services/:svcId     xoá 1 dịch vụ (bookings:update)
 GET    /api/bookings/:id/readiness → {readiness} Go/No-Go: {verdict: GO|NO_GO, score, passedCount, total,
                                    checks[{key,label,severity:critical|warn,pass,detail}], blocking[], warnings[]}
                                    Pure logic: src/services/readiness.js (dùng chung route + smoke test).
                                    Critical: danh sách khách đủ tên · thu đủ tiền · NVDH (+WC nếu wellness) ·
-                                   PO-02 xe · PO-03 KS · PO-07 bảo hiểm (· hộ chiếu >6th nếu có khách dùng HC).
+                                   PO-02 xe · PO-03 KS · PO-07 bảo hiểm · dịch vụ NCC đã xác nhận (nếu có ghi
+                                   services) · hộ chiếu >6th (nếu có khách dùng HC).
                                    UI: card 🚦 trên booking detail; chuyển IN_PROGRESS khi NO_GO → confirm cảnh báo.
 GET    /api/bookings/my-tasks    → {tasks, overdue, dueToday} — checklist item chưa xong của user hiện tại
 GET    /api/bookings/calendar    ?month=YYYY-MM → {items: [{bookingId, product, tourDate, endDate, days, status, assignedTo, pax}]}
@@ -435,6 +448,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
       báo cáo đã thu/chờ thu + CRM + brief + /tracuu đều tính theo tổng thực thu
 - [x] Hồ sơ hành khách chi tiết (tên đúng giấy tờ, giấy tờ, y tế/dị ứng, liên hệ khẩn) → manifest in ra dùng thật
 - [x] Cổng Go/No-Go: bảng chấm sẵn sàng khởi hành (bắt buộc + cảnh báo), chặn "tour chạy mù" khi chuyển IN_PROGRESS
+- [x] Đặt dịch vụ NCC + trạng thái xác nhận giữ chỗ (REQUESTED→CONFIRMED + voucher), nuôi Go/No-Go + card dashboard "NCC chưa xác nhận"
 
 ## Tính năng chưa có (backlog)
 
