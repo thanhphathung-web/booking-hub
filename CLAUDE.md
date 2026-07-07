@@ -198,7 +198,12 @@ POST   /api/bookings/:id/payments          body: {amount, method?, date?, note?}
                                            thu đủ tự set paid=true; chặn khi CANCELLED
 DELETE /api/bookings/:id/payments/:rcptId  — xoá lần thu ghi nhầm (finance:payment), paid tính lại
                                            Helper dùng chung: src/services/payments.js (collectedOf/receiptsTotal/recomputePaid)
-PATCH  /api/bookings/:id/status  body: {status, note?}
+PATCH  /api/bookings/:id/status  body: {status, note?} — status=CANCELLED bị chặn (409): huỷ phải qua 2 người
+POST   /api/bookings/:id/cancel-request  body: {reason} (bookings:update) — tạo yêu cầu huỷ, chưa đổi status
+POST   /api/bookings/:id/cancel-approve  (bookings:confirm = CEO/TPDH; người duyệt ≠ người yêu cầu) → CANCELLED
+POST   /api/bookings/:id/cancel-reject   (người yêu cầu hoặc CEO/TPDH) — bỏ yêu cầu
+                                 booking.cancelRequest = {by,name,reason,at} khi đang chờ; UI: banner đỏ + nút duyệt/bỏ
+                                 trên detail, card dashboard "Chờ duyệt huỷ" (stats.pendingCancels)
 PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?, force?} — NVDH trùng lịch (theo số ngày tour)
                                  → 409 {conflicts}; force=true để vẫn phân công (UI hiện confirm)
 POST   /api/bookings/:id/note    body: {text}
@@ -508,6 +513,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Nhắc việc real-time: phân công NVDH/WC + sự cố nặng đẩy ngay qua email/Zalo (fire-and-forget, skip êm nếu chưa cấu hình)
 - [x] Giao tiếp khách tự động: xác nhận (khi CONFIRMED) → nhắc T-3 → cảm ơn/đánh giá sau tour (cron 08:00 + gửi tay, dedupe)
 - [x] Độ bền: health check nâng cao (uptime/db/RAM/lỗi), ring buffer lỗi + viewer CEO, error handler + process handlers, hook Sentry
+- [x] Huỷ booking 2 người (maker-checker): yêu cầu huỷ + lý do → CEO/TPDH khác duyệt; chặn huỷ trực tiếp, chống huỷ đơn phương
 
 ## Tính năng chưa có (backlog)
 

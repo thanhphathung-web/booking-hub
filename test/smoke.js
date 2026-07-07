@@ -407,7 +407,8 @@ async function login(username, password) {
       check('lưu rooming, lọc phòng rỗng → 1 phòng',
         r.status === 200 && r.data.rooming.rooms.length === 1 && r.data.rooming.rooms[0].guests.length === 2);
 
-      await req('PATCH', `/api/bookings/${iid}/status`, { token: ceo, body: { status: 'CANCELLED' } });
+      await req('POST', `/api/bookings/${iid}/cancel-request`, { token: nvdh, body: { reason: 'test huỷ' } });
+      await req('POST', `/api/bookings/${iid}/cancel-approve`, { token: ceo });
       r = await req('PUT', `/api/bookings/${iid}/itinerary`, { token: nvdh, body: { days: [] } });
       check('booking CANCELLED không sửa lịch trình → 409', r.status === 409);
     }
@@ -496,6 +497,53 @@ async function login(username, password) {
       await req('PUT', `/api/bookings/${cid}/itinerary`, { token: ceo, body: { days: [{ title: 'D1', activities: [{ time: '06:30', desc: 'Đón tại KS Rex' }] }] } });
       r = await req('GET', `/api/bookings/${cid}/comms/preview?type=reminder`, { token: cs });
       check('nhắc T-3 lấy điểm hẹn từ itinerary', /06:30 — Đón tại KS Rex/.test(r.data.text || ''));
+    }
+
+    console.log('\n— Huỷ booking 2 người (maker-checker) —');
+    {
+      const tpdh = await login('tpdh', 'tpdh123');
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cancel', tourDate: '2031-05-01', adults: 2,
+        customer: { name: 'K Cancel', phone: '0900000091' } } });
+      const kid = r.data.booking.bookingId;
+
+      r = await req('POST', `/api/bookings/${kid}/cancel-request`, { token: tpdh, body: { reason: 'ab' } });
+      check('yêu cầu huỷ thiếu lý do → 400', r.status === 400);
+      r = await req('POST', `/api/bookings/${kid}/cancel-request`, { token: tpdh, body: { reason: 'Khách đổi kế hoạch' } });
+      check('TPDH gửi yêu cầu huỷ → 201', r.status === 201);
+      r = await req('GET', `/api/bookings/${kid}`, { token: ceo });
+      check('booking chưa CANCELLED, có cancelRequest', r.data.booking.status !== 'CANCELLED' && r.data.booking.cancelRequest?.by === 'tpdh');
+      r = await req('POST', `/api/bookings/${kid}/cancel-request`, { token: nvdh, body: { reason: 'trùng yêu cầu' } });
+      check('đã có yêu cầu huỷ → 409', r.status === 409);
+      r = await req('PATCH', `/api/bookings/${kid}/status`, { token: ceo, body: { status: 'CANCELLED' } });
+      check('đổi status CANCELLED trực tiếp bị chặn → 409', r.status === 409);
+
+      r = await req('POST', `/api/bookings/${kid}/cancel-approve`, { token: tpdh });
+      check('người yêu cầu tự duyệt → 403', r.status === 403);
+      r = await req('POST', `/api/bookings/${kid}/cancel-approve`, { token: nvdh });
+      check('NVDH (không có quyền duyệt) → 403', r.status === 403);
+
+      let s = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('stats.pendingCancels đếm yêu cầu chờ duyệt', s.data.pendingCancels >= 1, String(s.data.pendingCancels));
+
+      r = await req('POST', `/api/bookings/${kid}/cancel-approve`, { token: ceo });
+      check('người thứ hai (CEO) duyệt → 200, CANCELLED', r.status === 200 && r.data.booking.status === 'CANCELLED');
+      check('lịch sử ghi lý do + người duyệt', /Khách đổi kế hoạch/.test(JSON.stringify(r.data.booking.statusHistory)));
+      s = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('pendingCancels về 0 sau khi duyệt', s.data.pendingCancels === 0, String(s.data.pendingCancels));
+
+      // Luồng bỏ yêu cầu
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Cancel 2', tourDate: '2031-05-02', adults: 1,
+        customer: { name: 'K2', phone: '0900000092' } } });
+      const kid2 = r.data.booking.bookingId;
+      await req('POST', `/api/bookings/${kid2}/cancel-request`, { token: nvdh, body: { reason: 'thử rồi rút' } });
+      r = await req('POST', `/api/bookings/${kid2}/cancel-reject`, { token: cs });
+      check('CS (không có quyền) bỏ yêu cầu → 403', r.status === 403);
+      r = await req('POST', `/api/bookings/${kid2}/cancel-reject`, { token: nvdh });
+      check('người yêu cầu tự rút → 200', r.status === 200);
+      r = await req('GET', `/api/bookings/${kid2}`, { token: ceo });
+      check('cancelRequest đã xoá, booking không huỷ', !r.data.booking.cancelRequest && r.data.booking.status !== 'CANCELLED');
     }
 
     console.log('\n— Độ bền: health + error log —');

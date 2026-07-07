@@ -90,7 +90,9 @@ router.get('/stats', requireAuth, async (req, res) => {
     const activeBookings = await dbAsync.find('bookings', { status: { $nin: ['CANCELLED', 'COMPLETED'] } });
     const openIncidents = activeBookings.reduce((n, b) =>
       n + (b.incidents || []).filter(i => i.status === 'OPEN').length, 0);
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents });
+    // Yêu cầu huỷ đang chờ người thứ hai duyệt
+    const pendingCancels = await dbAsync.count('bookings', { 'cancelRequest.by': { $exists: true } });
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents, pendingCancels });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -322,6 +324,9 @@ router.patch('/:id/status', ...requirePerm('bookings:update'), async (req, res) 
     const VALID = ['NEW','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'];
     if (!VALID.includes(status))
       return res.status(400).json({ error: `Status không hợp lệ. Dùng: ${VALID.join(', ')}` });
+    // Huỷ booking phải qua quy trình 2 người (maker-checker), không đổi trực tiếp
+    if (status === 'CANCELLED')
+      return res.status(409).json({ error: 'Huỷ booking cần 2 người: gửi Yêu cầu huỷ rồi để CEO/TPDH duyệt' });
 
     const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
@@ -356,6 +361,60 @@ router.patch('/:id/status', ...requirePerm('bookings:update'), async (req, res) 
 
     const updated = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     res.json({ message: `Đã cập nhật status → ${status}`, booking: updated });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Huỷ booking 2 người (maker-checker) ───────────────────
+// Người yêu cầu ≠ người duyệt; chỉ CEO/TPDH được duyệt → chống huỷ nhầm/đơn phương
+router.post('/:id/cancel-request', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 3) return res.status(400).json({ error: 'Cần nêu lý do huỷ (tối thiểu 3 ký tự)' });
+    const b = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['CANCELLED', 'COMPLETED'].includes(b.status))
+      return res.status(409).json({ error: `Booking đã ${b.status} — không huỷ được nữa` });
+    if (b.cancelRequest)
+      return res.status(409).json({ error: `Đã có yêu cầu huỷ bởi ${b.cancelRequest.name} — chờ CEO/TPDH duyệt` });
+    const now = new Date().toISOString();
+    const cancelRequest = { by: req.user.username, name: req.user.name, reason, at: now };
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { cancelRequest, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'CANCEL_REQUESTED', bookingId: req.params.id, to: reason, by: req.user.username, at: now });
+    res.status(201).json({ message: 'Đã gửi yêu cầu huỷ — chờ CEO/TPDH duyệt', cancelRequest });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/cancel-approve', ...requirePerm('bookings:confirm'), async (req, res) => {
+  try {
+    const b = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (!b.cancelRequest) return res.status(409).json({ error: 'Không có yêu cầu huỷ nào để duyệt' });
+    if (b.cancelRequest.by === req.user.username)
+      return res.status(403).json({ error: 'Người yêu cầu huỷ không được tự duyệt — cần người thứ hai' });
+
+    const now = new Date().toISOString();
+    const note = `Huỷ: ${b.cancelRequest.reason} (yêu cầu: ${b.cancelRequest.name} · duyệt: ${req.user.name})`;
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { status: 'CANCELLED', cancelRequest: null, updatedAt: now },
+        $push: { statusHistory: { status: 'CANCELLED', by: req.user.username, at: now, note } } });
+    await dbAsync.insert('activity', { type: 'STATUS_CHANGED', bookingId: req.params.id, from: b.status, to: 'CANCELLED', by: req.user.username, at: now });
+    await dbAsync.insert('activity', { type: 'CANCEL_APPROVED', bookingId: req.params.id, to: b.cancelRequest.by, by: req.user.username, at: now });
+    const updated = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    res.json({ message: 'Đã duyệt — booking đã huỷ', booking: updated });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/cancel-reject', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const b = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (!b.cancelRequest) return res.status(409).json({ error: 'Không có yêu cầu huỷ nào' });
+    const canReject = b.cancelRequest.by === req.user.username || ['CEO', 'TPDH'].includes(req.user.role);
+    if (!canReject) return res.status(403).json({ error: 'Chỉ người yêu cầu hoặc CEO/TPDH được bỏ yêu cầu' });
+    const now = new Date().toISOString();
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { cancelRequest: null, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'CANCEL_REJECTED', bookingId: req.params.id, by: req.user.username, at: now });
+    res.json({ message: 'Đã bỏ yêu cầu huỷ' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
