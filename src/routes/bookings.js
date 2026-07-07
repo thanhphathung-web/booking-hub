@@ -7,6 +7,7 @@ const { createBooking } = require('../services/createBooking');
 const { receiptsTotal, collectedOf, recomputePaid } = require('../services/payments');
 const { assessReadiness } = require('../services/readiness');
 const notifier = require('../services/notifier');
+const customerComms = require('../services/customerComms');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -348,6 +349,10 @@ router.patch('/:id/status', ...requirePerm('bookings:update'), async (req, res) 
 
     await dbAsync.insert('activity', { type:'STATUS_CHANGED', bookingId: req.params.id,
       from: booking.status, to: status, by: req.user.username, at: now });
+
+    // Tự động gửi email xác nhận cho khách khi lần đầu chuyển sang CONFIRMED (dedupe, fire-and-forget)
+    if (status === 'CONFIRMED' && booking.status !== 'CONFIRMED' && !booking.comms?.confirmSent)
+      customerComms.sendComm({ ...booking, status }, 'confirm', req.user.username).catch(() => {});
 
     const updated = await dbAsync.findOne('bookings', { bookingId: req.params.id });
     res.json({ message: `Đã cập nhật status → ${status}`, booking: updated });
@@ -878,6 +883,36 @@ router.get('/:id/readiness', ...requirePerm('bookings:read'), async (req, res) =
     const ensured = ensureChecklist(booking);
     if (ensured) booking.checklist = ensured;
     res.json({ bookingId: booking.bookingId, readiness: assessReadiness(booking) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Giao tiếp khách tự động (xác nhận / nhắc T-3 / cảm ơn) ─
+const COMM_TYPES = ['confirm', 'reminder', 'thankyou'];
+
+// Xem trước nội dung sẽ gửi cho khách
+router.get('/:id/comms/preview', ...requirePerm('bookings:read'), async (req, res) => {
+  try {
+    const type = req.query.type;
+    if (!COMM_TYPES.includes(type))
+      return res.status(400).json({ error: `Loại không hợp lệ. Dùng: ${COMM_TYPES.join(', ')}` });
+    const b = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const { subject, text } = customerComms.BUILDERS[type](b);
+    res.json({ type, label: customerComms.TYPE_LABEL[type], subject, text,
+      to: b.customer?.email || null, sentAt: b.comms?.[customerComms.SENT_FIELD[type]] || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Gửi ngay 1 touchpoint cho khách (thủ công) — email; trả kết quả per lần
+router.post('/:id/comms/send', ...requirePerm('bookings:read'), async (req, res) => {
+  try {
+    const { type } = req.body;
+    if (!COMM_TYPES.includes(type))
+      return res.status(400).json({ error: `Loại không hợp lệ. Dùng: ${COMM_TYPES.join(', ')}` });
+    const b = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!b) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const entry = await customerComms.sendComm(b, type, req.user.username);
+    res.json({ message: entry.result === 'đã gửi' ? 'Đã gửi email cho khách' : 'Không gửi được — xem chi tiết', entry });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

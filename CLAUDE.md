@@ -139,6 +139,10 @@ booking-hub/
   rooming: {               // rooming list — phân phòng khách
     rooms: [{ roomType, roomNo, guests: [tên khách], note }], updatedBy, updatedAt
   },
+  comms: {                 // giao tiếp khách tự động — dedupe qua timestamp đã gửi
+    confirmSent, reminderSent, thankYouSent,   // ISO timestamp (null = chưa gửi)
+    log: [{ type, channel, to, result, at, by }]
+  },
   checklist: [{            // checklist SOP tour — sinh tự động theo status (src/db/tourChecklist.js)
     code,                  // BC-xx|PO-xx|OP-xx|PT-xx
     title, phase,          // BOOKING|PREOPS|OPS|POSTOPS
@@ -298,6 +302,14 @@ GET /api/zalo/followers   (CEO) → danh sách follower OA {user_id, display_nam
 - Gửi tin CS `/v3.0/oa/message/cs` — nhân viên phải **follow OA** của công ty trước
 - Flow gán: nhân viên follow OA → CEO vào Quản lý User → "💬 Tra Zalo ID" → copy → dán vào "🔔 Kênh nhắc" của user
 - **Chưa test với OA thật** (cần app_id/secret/token thật) — mọi lỗi API trả về trong kết quả digest per-user, không crash
+
+### Giao tiếp khách tự động (`src/services/customerComms.js`)
+```
+GET  /api/bookings/:id/comms/preview?type=confirm|reminder|thankyou (bookings:read) → {subject,text,to,sentAt}
+POST /api/bookings/:id/comms/send   body:{type} (bookings:read) → gửi email khách ngay, trả kết quả
+```
+3 touchpoint theo vòng đời: **confirm** (tự gửi khi lần đầu CONFIRMED) · **reminder** T-3 · **thankyou** sau tour.
+Cron 08:00 (giờ VN) trong `server.js` → `runDaily()`: nhắc T-3 (tourDate = today+3) + cảm ơn (COMPLETED, tourDate trong 7 ngày gần đây — chống blast lịch sử). Kênh: **email khách** (customer.email) qua mailer; chưa có email / mail chưa cấu hình → skip êm, dedupe qua `booking.comms`. UI: card "💌 Giao tiếp khách" trên detail (preview + gửi email + copy + Zalo deep link). Zalo khách gửi tay (OA chỉ nhắn follower).
 
 ### Nhắc việc real-time (`src/services/notifier.js` + `/api/notify`)
 ```
@@ -487,6 +499,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Chương trình tour ngày-by-ngày (mốc giờ + suất ăn + nơi nghỉ) + rooming list; in bản khách + nhúng Tour File; nuôi Go/No-Go (cảnh báo)
 - [x] Sổ sự cố có cấu trúc (mức độ/phân loại/biện pháp/OPEN→RESOLVED) + card dashboard "Sự cố đang mở" + Thẻ SOS in cho NVDH
 - [x] Nhắc việc real-time: phân công NVDH/WC + sự cố nặng đẩy ngay qua email/Zalo (fire-and-forget, skip êm nếu chưa cấu hình)
+- [x] Giao tiếp khách tự động: xác nhận (khi CONFIRMED) → nhắc T-3 → cảm ơn/đánh giá sau tour (cron 08:00 + gửi tay, dedupe)
 
 ## Tính năng chưa có (backlog)
 

@@ -891,6 +891,22 @@
   </div>
 </div>
 
+<div id="modalComms" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg my-8">
+    <h3 id="comms-label" class="text-lg font-bold mb-1">💌 Giao tiếp khách</h3>
+    <input id="comms-type" type="hidden"/>
+    <p id="comms-to" class="text-xs text-gray-400 mb-2"></p>
+    <div id="comms-sub" class="text-sm font-semibold text-gray-800 mb-2"></div>
+    <textarea id="comms-text" class="input h-56 text-sm w-full font-mono" readonly></textarea>
+    <div class="mt-4 flex gap-2 flex-wrap items-center">
+      <button onclick="sendCommNow()" id="comms-send-btn" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">📧 Gửi email khách</button>
+      <button onclick="copyCommText()" class="border border-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">📋 Copy</button>
+      <a id="comms-zalo" href="#" target="_blank" class="hidden bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-500">💬 Zalo</a>
+      <button onclick="closeModal('modalComms')" class="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 ml-auto">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalIncident" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
   <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg my-8">
     <h3 id="inc-title-label" class="text-lg font-bold mb-4">🚨 Ghi nhận sự cố</h3>
@@ -1949,6 +1965,7 @@ async function showDetail(id) {
             ${renderPayments(b)}
           </div>
 
+          ${renderComms(b)}
           ${renderExpenses(b)}
         </div>
       </div>`;
@@ -2346,6 +2363,68 @@ function copyConfirmMsg() {
   navigator.clipboard.writeText(ta.value).then(() => toast('✅ Đã copy tin nhắn')).catch(() => {
     ta.select(); document.execCommand('copy'); toast('✅ Đã copy tin nhắn');
   });
+}
+
+// ── Giao tiếp khách tự động (xác nhận / nhắc T-3 / cảm ơn) ──
+const COMM_META = {
+  confirm:  { label:'✅ Xác nhận đặt tour', field:'confirmSent',  desc:'Gửi tự động khi xác nhận đơn' },
+  reminder: { label:'⏰ Nhắc lịch T-3',      field:'reminderSent', desc:'Tự động 3 ngày trước khởi hành' },
+  thankyou: { label:'🙏 Cảm ơn + đánh giá',  field:'thankYouSent', desc:'Tự động sau khi tour hoàn thành' },
+};
+function renderComms(b) {
+  if (b.status === 'CANCELLED') return '';
+  const c = b.comms || {};
+  const hasEmail = !!b.customer?.email;
+  const rows = Object.entries(COMM_META).map(([type, m]) => {
+    const sent = c[m.field];
+    return `<div class="flex items-center gap-2 py-2 border-t border-gray-50 first:border-0 text-sm">
+      <div class="flex-1 min-w-0">
+        <p class="text-gray-800">${m.label}</p>
+        <p class="text-xs ${sent ? 'text-green-600' : 'text-gray-400'}">${sent ? '✓ đã gửi ' + new Date(sent).toLocaleString('vi-VN') : m.desc}</p>
+      </div>
+      <button data-t="${type}" onclick="openComms(this.dataset.t)" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50 flex-shrink-0">Xem / Gửi</button>
+    </div>`;
+  }).join('');
+  return `<div class="bg-white rounded-xl shadow-sm p-6">
+    <h4 class="font-semibold text-gray-700 mb-1">💌 Giao tiếp khách</h4>
+    <p class="text-xs ${hasEmail ? 'text-gray-400' : 'text-amber-600'} mb-2">${hasEmail ? 'Email khách: ' + esc(b.customer.email) : '⚠️ Khách chưa có email — chỉ copy / gửi Zalo tay được'}</p>
+    <div>${rows}</div>
+  </div>`;
+}
+async function openComms(type) {
+  const b = window._curBooking;
+  try {
+    const p = await api(`/bookings/${b.bookingId}/comms/preview?type=${type}`);
+    document.getElementById('comms-type').value = type;
+    document.getElementById('comms-label').textContent = '💌 ' + p.label;
+    document.getElementById('comms-sub').textContent = p.subject;
+    document.getElementById('comms-text').value = p.text;
+    document.getElementById('comms-to').textContent = p.to
+      ? `Gửi tới: ${p.to}${p.sentAt ? ' · đã gửi ' + new Date(p.sentAt).toLocaleString('vi-VN') : ''}`
+      : '⚠️ Khách chưa có email — dùng Copy / Zalo gửi tay';
+    const sendBtn = document.getElementById('comms-send-btn');
+    sendBtn.disabled = !p.to;
+    sendBtn.classList.toggle('opacity-40', !p.to);
+    sendBtn.classList.toggle('cursor-not-allowed', !p.to);
+    const phone = (b.customer?.phone || '').replace(/\D/g, '');
+    const zalo = document.getElementById('comms-zalo');
+    if (phone) { zalo.href = 'https://zalo.me/' + phone; zalo.classList.remove('hidden'); } else zalo.classList.add('hidden');
+    document.getElementById('modalComms').classList.remove('hidden');
+  } catch(e) { toast(e.message, 'error'); }
+}
+async function sendCommNow() {
+  const b = window._curBooking;
+  const type = document.getElementById('comms-type').value;
+  try {
+    const res = await api(`/bookings/${b.bookingId}/comms/send`, { method:'POST', body: JSON.stringify({ type }) });
+    const ok = res.entry?.result === 'đã gửi';
+    toast(ok ? '✅ Đã gửi email cho khách' : ('Không gửi được: ' + (res.entry?.result || '')), ok ? 'success' : 'warn');
+    closeModal('modalComms'); showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+function copyCommText() {
+  const ta = document.getElementById('comms-text');
+  navigator.clipboard.writeText(ta.value).then(() => toast('✅ Đã copy')).catch(() => { ta.select(); document.execCommand('copy'); toast('✅ Đã copy'); });
 }
 
 // ── Export Booking List CSV ────────────────────────────────

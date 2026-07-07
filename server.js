@@ -68,6 +68,16 @@ cron.schedule('30 7 * * *', async () => {
   } catch (e) { console.error('[digest] Lỗi:', e.message); }
 }, { timezone: 'Asia/Ho_Chi_Minh' });
 
+// ── Giao tiếp khách tự động 08:00 sáng (giờ VN) — nhắc T-3 + cảm ơn sau tour ──
+const { runDaily: runCustomerComms } = require('./src/services/customerComms');
+cron.schedule('0 8 * * *', async () => {
+  console.log('[comms] Quét gửi nhắc T-3 + cảm ơn sau tour...');
+  try {
+    const r = await runCustomerComms();
+    console.log('[comms]', JSON.stringify(r));
+  } catch (e) { console.error('[comms] Lỗi:', e.message); }
+}, { timezone: 'Asia/Ho_Chi_Minh' });
+
 // ── Backup dữ liệu 02:00 sáng (giờ VN) — gửi data/ nén gzip qua email ──
 cron.schedule('0 2 * * *', async () => {
   console.log('[backup] Tạo backup đêm...');

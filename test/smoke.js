@@ -468,6 +468,36 @@ async function login(username, password) {
       check('ghi sự cố CRITICAL (kèm notify CEO/TPDH) → 201', r.status === 201);
     }
 
+    console.log('\n— Giao tiếp khách tự động —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Comms 2N1Đ', tourDate: '2031-02-10', adults: 2,
+        customer: { name: 'Khach Comms', phone: '0900000081', email: 'khach@example.com' },
+        payment: { amount: 6000000 } } });
+      const cid = r.data.booking.bookingId;
+      check('booking mới có comms init', !!r.data.booking.comms && r.data.booking.comms.confirmSent === null);
+
+      r = await req('GET', `/api/bookings/${cid}/comms/preview?type=confirm`, { token: cs });
+      check('preview xác nhận có subject + text + to',
+        r.status === 200 && /Xác nhận đặt tour/.test(r.data.subject) && r.data.to === 'khach@example.com' && /Khach Comms/.test(r.data.text));
+      r = await req('GET', `/api/bookings/${cid}/comms/preview?type=bad`, { token: cs });
+      check('type comm sai → 400', r.status === 400);
+
+      r = await req('POST', `/api/bookings/${cid}/comms/send`, { token: cs, body: { type: 'confirm' } });
+      check('gửi xác nhận (mail chưa cấu hình) → skip êm', r.status === 200 && /skip: mail/.test(r.data.entry?.result || ''), JSON.stringify(r.data.entry));
+
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Comms No Email', tourDate: '2031-02-11', adults: 1,
+        customer: { name: 'No Email', phone: '0900000082' } } });
+      const cid2 = r.data.booking.bookingId;
+      r = await req('POST', `/api/bookings/${cid2}/comms/send`, { token: cs, body: { type: 'thankyou' } });
+      check('khách chưa có email → skip: khách chưa có email', /skip: khách chưa có email/.test(r.data.entry?.result || ''));
+
+      await req('PUT', `/api/bookings/${cid}/itinerary`, { token: ceo, body: { days: [{ title: 'D1', activities: [{ time: '06:30', desc: 'Đón tại KS Rex' }] }] } });
+      r = await req('GET', `/api/bookings/${cid}/comms/preview?type=reminder`, { token: cs });
+      check('nhắc T-3 lấy điểm hẹn từ itinerary', /06:30 — Đón tại KS Rex/.test(r.data.text || ''));
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');
@@ -493,7 +523,7 @@ async function login(username, password) {
         r.data?.booking && !('checklist' in r.data.booking) && !('expenses' in r.data.booking)
         && !('costEstimate' in r.data.booking) && !('notes' in r.data.booking)
         && !('passengers' in r.data.booking) && !('services' in r.data.booking)
-        && !('incidents' in r.data.booking));
+        && !('incidents' in r.data.booking) && !('comms' in r.data.booking));
       check('có statusLabel tiếng Việt + timeline', !!r.data?.booking?.statusLabel && Array.isArray(r.data?.booking?.timeline));
       r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0999999999' } });
       check('SĐT sai → 404', r.status === 404);
