@@ -41,7 +41,7 @@ async function login(username, password) {
   const server = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
     env: { ...process.env, PORT, DATA_DIR: dataDir, JWT_SECRET: 'smoke-secret',
-      WEBHOOK_API_KEY: WEBHOOK_KEY, SMTP_HOST: '', ZALO_APP_ID: '' },
+      WEBHOOK_API_KEY: WEBHOOK_KEY, SMTP_HOST: '', ZALO_APP_ID: '', ENABLE_TEST_ERROR: '1' },
     stdio: 'ignore',
   });
 
@@ -496,6 +496,26 @@ async function login(username, password) {
       await req('PUT', `/api/bookings/${cid}/itinerary`, { token: ceo, body: { days: [{ title: 'D1', activities: [{ time: '06:30', desc: 'Đón tại KS Rex' }] }] } });
       r = await req('GET', `/api/bookings/${cid}/comms/preview?type=reminder`, { token: cs });
       check('nhắc T-3 lấy điểm hẹn từ itinerary', /06:30 — Đón tại KS Rex/.test(r.data.text || ''));
+    }
+
+    console.log('\n— Độ bền: health + error log —');
+    {
+      r = await req('GET', '/api/health');
+      check('health có uptime + db + errors', r.status === 200 && r.data.db === 'ok'
+        && typeof r.data.uptimeSec === 'number' && typeof r.data.errors === 'number');
+      const errsBefore = r.data.errors;
+
+      r = await req('GET', '/api/health/boom');
+      check('lỗi không xử lý → error handler trả 500 JSON', r.status === 500 && !!r.data?.error);
+
+      r = await req('GET', '/api/errors', { token: ceo });
+      check('CEO xem lỗi hệ thống, có ghi nhận boom',
+        r.status === 200 && r.data.errors.some(e => /boom test error/.test(e.message)));
+      r = await req('GET', '/api/errors', { token: nvdh });
+      check('NVDH xem lỗi hệ thống → 403', r.status === 403);
+
+      r = await req('GET', '/api/health');
+      check('health.errors tăng sau sự cố', r.data.errors > errsBefore, `${errsBefore}→${r.data.errors}`);
     }
 
     console.log('\n— Backup —');

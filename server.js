@@ -42,9 +42,36 @@ app.use('/api/customers',  require('./src/routes/customers'));
 app.use('/api/lookup',     require('./src/routes/lookup'));
 app.use('/api/notify',     require('./src/routes/notify'));
 
-// Health check
-app.get('/api/health', (req, res) =>
-  res.json({ status: 'OK', version: require('./package.json').version, time: new Date().toISOString() }));
+// Health check — dùng làm target cho uptime monitor ngoài (UptimeRobot...)
+const errorLog = require('./src/services/errorLog');
+const { dbAsync } = require('./src/db/database');
+const { requirePerm } = require('./src/middleware/auth');
+
+app.get('/api/health', async (req, res) => {
+  let dbOk = true;
+  try { await dbAsync.count('users', {}); } catch (e) { dbOk = false; }
+  const mem = process.memoryUsage();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'OK' : 'DEGRADED',
+    version: require('./package.json').version,
+    time: new Date().toISOString(),
+    uptimeSec: Math.round(process.uptime()),
+    node: process.version,
+    db: dbOk ? 'ok' : 'lỗi',
+    rssMB: Math.round(mem.rss / 1048576),
+    errors: errorLog.unresolvedCount(),
+  });
+});
+
+// Lỗi hệ thống gần nhất — CEO xem khi cần chẩn đoán
+app.get('/api/errors', ...requirePerm('users:manage'), (req, res) => {
+  res.json({ total: errorLog.count(), unresolved: errorLog.unresolvedCount(),
+    errors: errorLog.recent(parseInt(req.query.limit) || 50) });
+});
+
+// Route thử lỗi — chỉ bật khi ENABLE_TEST_ERROR=1 (smoke test), không tồn tại ở production
+if (process.env.ENABLE_TEST_ERROR === '1')
+  app.get('/api/health/boom', async () => { throw new Error('boom test error'); });
 
 // Trang tra cứu công khai cho khách (đường dẫn đẹp, không cần .html)
 app.get('/tracuu', (req, res) =>
@@ -56,6 +83,17 @@ app.get('/nvdh', (req, res) =>
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ── Lưới an toàn: bắt lỗi không được xử lý trong route/middleware ──
+app.use((err, req, res, next) => {
+  errorLog.capture(err, { source: 'express', url: req.originalUrl, method: req.method });
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Lỗi hệ thống — đã ghi nhận, vui lòng thử lại' });
+});
+
+// ── Không để tiến trình chết âm thầm ─────────────────────
+process.on('unhandledRejection', (reason) => errorLog.capture(reason, { source: 'unhandledRejection' }));
+process.on('uncaughtException',  (err)    => errorLog.capture(err,    { source: 'uncaughtException' }));
 
 // ── Email digest nhắc việc 07:30 sáng (giờ VN) ───────────
 const cron = require('node-cron');

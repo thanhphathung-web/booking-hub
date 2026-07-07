@@ -275,6 +275,13 @@ POST /api/customers/:phone/note  body: {text} — ghi chú chăm sóc (customers
 ```
 Hạng khách: VIP (≥3 tour hoặc thực thu ≥50tr) | THANTHIET (2 tour) | MOI (1). UI: trang "Khách hàng" + modal hồ sơ (lịch sử booking, ghi chú); tên khách trên booking detail bấm được để mở hồ sơ.
 
+### Độ bền / giám sát (`src/services/errorLog.js`)
+```
+GET /api/health   (công khai) → {status, version, uptimeSec, node, db, rssMB, errors} — target cho uptime monitor
+GET /api/errors   (CEO) → {total, unresolved, errors[]} — bộ đệm 100 lỗi gần nhất
+```
+Lưới an toàn: error-handler middleware cuối chuỗi + `process.on(unhandledRejection|uncaughtException)` → ghi vào ring buffer (không crash). Đặt `SENTRY_DSN` thì forward lỗi lên Sentry (best-effort, không thêm dependency). UI: nút "🩺 Sức khoẻ hệ thống" trên trang Audit Log. `ENABLE_TEST_ERROR=1` bật route `/api/health/boom` (chỉ dùng smoke test).
+
 ### Backup (CEO only)
 ```
 GET  /api/backup/download   → tải data/ nén .json.gz (nút 💾 trên trang Audit Log)
@@ -500,6 +507,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Sổ sự cố có cấu trúc (mức độ/phân loại/biện pháp/OPEN→RESOLVED) + card dashboard "Sự cố đang mở" + Thẻ SOS in cho NVDH
 - [x] Nhắc việc real-time: phân công NVDH/WC + sự cố nặng đẩy ngay qua email/Zalo (fire-and-forget, skip êm nếu chưa cấu hình)
 - [x] Giao tiếp khách tự động: xác nhận (khi CONFIRMED) → nhắc T-3 → cảm ơn/đánh giá sau tour (cron 08:00 + gửi tay, dedupe)
+- [x] Độ bền: health check nâng cao (uptime/db/RAM/lỗi), ring buffer lỗi + viewer CEO, error handler + process handlers, hook Sentry
 
 ## Tính năng chưa có (backlog)
 
