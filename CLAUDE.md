@@ -299,6 +299,16 @@ GET /api/zalo/followers   (CEO) → danh sách follower OA {user_id, display_nam
 - Flow gán: nhân viên follow OA → CEO vào Quản lý User → "💬 Tra Zalo ID" → copy → dán vào "🔔 Kênh nhắc" của user
 - **Chưa test với OA thật** (cần app_id/secret/token thật) — mọi lỗi API trả về trong kết quả digest per-user, không crash
 
+### Nhắc việc real-time (`src/services/notifier.js` + `/api/notify`)
+```
+GET  /api/notify/status   (CEO) → {email, zalo} — kênh nhắc real-time đã cấu hình chưa
+POST /api/notify/test     (requireAuth) → gửi 1 tin thử tới kênh nhắc của chính user, trả kết quả per-channel
+```
+Khác digest 07:30 (gom việc theo ngày). Sự kiện đẩy NGAY qua mailer + zalo (fire-and-forget, không chặn response, không throw):
+- **Phân công NVDH/WC** (PATCH /:id/assign, chỉ khi người phụ trách đổi) → báo người được phân công.
+- **Sự cố HIGH/CRITICAL** (POST /:id/incidents) → báo CEO + TPDH.
+Kênh nào chưa cấu hình / user chưa có email|zaloId → skip êm. UI: nút "🔔 Kiểm tra kênh nhắc" trang Quản lý User.
+
 ### Products (Tour Cost Sheet)
 ```
 GET    /api/products             ?active=true&type=   (mọi role)
@@ -476,6 +486,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Đặt dịch vụ NCC + trạng thái xác nhận giữ chỗ (REQUESTED→CONFIRMED + voucher), nuôi Go/No-Go + card dashboard "NCC chưa xác nhận"
 - [x] Chương trình tour ngày-by-ngày (mốc giờ + suất ăn + nơi nghỉ) + rooming list; in bản khách + nhúng Tour File; nuôi Go/No-Go (cảnh báo)
 - [x] Sổ sự cố có cấu trúc (mức độ/phân loại/biện pháp/OPEN→RESOLVED) + card dashboard "Sự cố đang mở" + Thẻ SOS in cho NVDH
+- [x] Nhắc việc real-time: phân công NVDH/WC + sự cố nặng đẩy ngay qua email/Zalo (fire-and-forget, skip êm nếu chưa cấu hình)
 
 ## Tính năng chưa có (backlog)
 

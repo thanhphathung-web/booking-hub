@@ -434,10 +434,12 @@
       <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Quản lý User</h2>
         <div class="flex gap-2">
+          <button onclick="testNotify()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">🔔 Kiểm tra kênh nhắc</button>
           <button onclick="openZaloFollowers()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">💬 Tra Zalo ID</button>
           <button onclick="openCreateUser()" class="bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Tạo User mới</button>
         </div>
       </div>
+      <div id="notifyStatus" class="hidden mb-4 text-sm rounded-xl p-3"></div>
       <div id="userTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
@@ -4395,6 +4397,22 @@ function statusBadge(status) {
 }
 
 // ── Users ─────────────────────────────────────────────────
+async function testNotify() {
+  const el = document.getElementById('notifyStatus');
+  try {
+    toast('Đang gửi tin thử…', 'info');
+    const res = await api('/notify/test', { method:'POST' });
+    const { email, zalo } = res.channels || {};
+    const line = (label, cfg, r) => `${cfg ? '✅' : '⚪'} ${label}: ${cfg ? esc(r||'') : 'chưa cấu hình'}`;
+    el.className = 'mb-4 text-sm rounded-xl p-3 bg-gray-50 border border-gray-200';
+    el.innerHTML = `<strong>🔔 Kênh nhắc việc real-time của bạn (${esc(USER.name)}):</strong><br>
+      ${line('Email', email, res.result?.email)}<br>${line('Zalo OA', zalo, res.result?.zalo)}
+      <p class="text-xs text-gray-400 mt-1">Sự kiện đẩy real-time: phân công NVDH/WC (báo người được phân công) · sự cố HIGH/CRITICAL (báo CEO/TPDH). Chưa cấu hình kênh thì skip êm — cấu hình email (RESEND_API_KEY/SMTP) hoặc Zalo OA để nhận.</p>`;
+    el.classList.remove('hidden');
+    toast('Đã thử gửi — xem kết quả', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 async function loadUsers() {
   try {
     const { users } = await api('/users');

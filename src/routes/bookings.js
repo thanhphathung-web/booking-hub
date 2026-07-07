@@ -6,6 +6,7 @@ const { getRunningBookings, tasksFor } = require('../services/tasks');
 const { createBooking } = require('../services/createBooking');
 const { receiptsTotal, collectedOf, recomputePaid } = require('../services/payments');
 const { assessReadiness } = require('../services/readiness');
+const notifier = require('../services/notifier');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -389,6 +390,13 @@ router.patch('/:id/assign', ...requirePerm('bookings:update'), async (req, res) 
     if (assignedTo) upd.assignedTo = assignedTo;
     if (wcAssigned) upd.wcAssigned = wcAssigned;
     await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: upd });
+
+    // Nhắc real-time: chỉ báo khi người phụ trách thực sự đổi (không spam khi lưu lại như cũ)
+    if (assignedTo && assignedTo !== booking.assignedTo)
+      notifier.notifyAssignment({ ...booking, ...upd }, assignedTo, req.user.name, 'NVDH').catch(() => {});
+    if (wcAssigned && wcAssigned !== booking.wcAssigned)
+      notifier.notifyAssignment({ ...booking, ...upd }, wcAssigned, req.user.name, 'WC (Wellness)').catch(() => {});
+
     res.json({ message: 'Đã phân công', bookingId: req.params.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -805,6 +813,10 @@ router.post('/:id/incidents', requireAuth, async (req, res) => {
       { $set: { updatedAt: now }, $push: { incidents: inc } });
     await dbAsync.insert('activity', { type: 'INCIDENT_ADDED', bookingId: req.params.id,
       to: `${severity}|${inc.title}`, by: req.user.username, at: now });
+
+    // Nhắc real-time: sự cố nặng (HIGH/CRITICAL) đẩy ngay cho CEO/TPDH
+    notifier.notifyIncident(booking, inc, req.user.name).catch(() => {});
+
     res.status(201).json({ message: 'Đã ghi nhận sự cố', incident: inc });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

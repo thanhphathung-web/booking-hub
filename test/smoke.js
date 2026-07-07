@@ -444,6 +444,30 @@ async function login(username, password) {
       check('người ghi xoá sự cố → OK', r.status === 200);
     }
 
+    console.log('\n— Nhắc việc real-time —');
+    {
+      r = await req('GET', '/api/notify/status', { token: ceo });
+      check('CEO xem trạng thái kênh nhắc → {email,zalo} bool',
+        typeof r.data?.email === 'boolean' && typeof r.data?.zalo === 'boolean');
+      check('chưa cấu hình trong test → email/zalo = false', r.data.email === false && r.data.zalo === false);
+      r = await req('GET', '/api/notify/status', { token: nvdh });
+      check('NVDH xem trạng thái kênh → 403', r.status === 403);
+      r = await req('POST', '/api/notify/test', { token: ceo });
+      check('CEO gửi tin thử → 200, skip êm (chưa có email/zalo)',
+        r.status === 200 && /skip/.test(r.data?.result?.email || '') && /skip/.test(r.data?.result?.zalo || ''),
+        JSON.stringify(r.data?.result));
+      // Phân công + ghi sự cố nặng vẫn chạy bình thường khi notify fire-and-forget (kênh chưa cấu hình)
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Notify', tourDate: '2031-01-10', adults: 1,
+        customer: { name: 'K Notify', phone: '0900000071' } } });
+      const nid = r.data.booking.bookingId;
+      r = await req('PATCH', `/api/bookings/${nid}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      check('phân công (kèm notify real-time) → 200', r.status === 200);
+      r = await req('POST', `/api/bookings/${nid}/incidents`, { token: nvdh, body: {
+        title: 'Test', description: 'Test sự cố nặng', severity: 'CRITICAL', category: 'OTHER' } });
+      check('ghi sự cố CRITICAL (kèm notify CEO/TPDH) → 201', r.status === 201);
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');

@@ -40,6 +40,7 @@ app.use('/api/webhook',    require('./src/routes/webhook'));
 app.use('/api/backup',     require('./src/routes/backup'));
 app.use('/api/customers',  require('./src/routes/customers'));
 app.use('/api/lookup',     require('./src/routes/lookup'));
+app.use('/api/notify',     require('./src/routes/notify'));
 
 // Health check
 app.get('/api/health', (req, res) =>
