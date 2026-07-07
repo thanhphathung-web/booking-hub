@@ -115,6 +115,16 @@ booking-hub/
   },
   source: String,          // WEBSITE|PLATFORM|ADMIN|DIRECT
   notes: [{ text, by, name, at }],
+  passengers: [{           // hồ sơ từng hành khách — nuôi manifest + Go/No-Go (chống sai tên vé/visa, thiếu y tế)
+    paxId, fullName, phone, gender,   // M|F|OTHER
+    dob,                              // YYYY-MM-DD
+    idType,                           // CCCD|CMND|PASSPORT|OTHER
+    idNumber, nationality, passportExpiry,
+    dietary, medical,                 // ăn kiêng/dị ứng · bệnh nền/thuốc
+    emergencyName, emergencyPhone, emergencyRel,
+    isLead,                           // trưởng đoàn (chỉ 1 người)
+    by, name, at
+  }],
   checklist: [{            // checklist SOP tour — sinh tự động theo status (src/db/tourChecklist.js)
     code,                  // BC-xx|PO-xx|OP-xx|PT-xx
     title, phase,          // BOOKING|PREOPS|OPS|POSTOPS
@@ -166,6 +176,17 @@ PATCH  /api/bookings/:id/assign  body: {assignedTo?, wcAssigned?, force?} — NV
                                  → 409 {conflicts}; force=true để vẫn phân công (UI hiện confirm)
 POST   /api/bookings/:id/note    body: {text}
 GET    /api/bookings/:id/brief   → {brief: string} (text để gửi Zalo/email cho CTY1)
+POST   /api/bookings/:id/passengers          body: {fullName*, phone?, gender?, dob?, idType?, idNumber?,
+                                             nationality?, passportExpiry?, dietary?, medical?, emergencyName?,
+                                             emergencyPhone?, emergencyRel?, isLead?} — bookings:update; chặn COMPLETED/CANCELLED
+PATCH  /api/bookings/:id/passengers/:paxId   sửa 1 hành khách (bookings:update)
+DELETE /api/bookings/:id/passengers/:paxId   xoá 1 hành khách (bookings:update)
+GET    /api/bookings/:id/readiness → {readiness} Go/No-Go: {verdict: GO|NO_GO, score, passedCount, total,
+                                   checks[{key,label,severity:critical|warn,pass,detail}], blocking[], warnings[]}
+                                   Pure logic: src/services/readiness.js (dùng chung route + smoke test).
+                                   Critical: danh sách khách đủ tên · thu đủ tiền · NVDH (+WC nếu wellness) ·
+                                   PO-02 xe · PO-03 KS · PO-07 bảo hiểm (· hộ chiếu >6th nếu có khách dùng HC).
+                                   UI: card 🚦 trên booking detail; chuyển IN_PROGRESS khi NO_GO → confirm cảnh báo.
 GET    /api/bookings/my-tasks    → {tasks, overdue, dueToday} — checklist item chưa xong của user hiện tại
 GET    /api/bookings/calendar    ?month=YYYY-MM → {items: [{bookingId, product, tourDate, endDate, days, status, assignedTo, pax}]}
                                  (days: từ product.durationDays, hoặc đoán "3N" trong tên, mặc định 1; trang "Lịch tour")
@@ -412,6 +433,8 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Trang tra cứu công khai /tracuu cho khách (mã đơn + SĐT, rate limit, chỉ trường an toàn)
 - [x] Tiền cọc / thu từng đợt: receipts per booking, paid tự suy ra, cảnh báo "sắp KH chưa thu đủ",
       báo cáo đã thu/chờ thu + CRM + brief + /tracuu đều tính theo tổng thực thu
+- [x] Hồ sơ hành khách chi tiết (tên đúng giấy tờ, giấy tờ, y tế/dị ứng, liên hệ khẩn) → manifest in ra dùng thật
+- [x] Cổng Go/No-Go: bảng chấm sẵn sàng khởi hành (bắt buộc + cảnh báo), chặn "tour chạy mù" khi chuyển IN_PROGRESS
 
 ## Tính năng chưa có (backlog)
 

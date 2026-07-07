@@ -859,6 +859,36 @@
   </div>
 </div>
 
+<div id="modalPax" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg my-8">
+    <h3 id="px-title" class="text-lg font-bold mb-4">👤 Thêm hành khách</h3>
+    <input id="px-paxid" type="hidden"/>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="col-span-2"><label class="label">Họ và tên (đúng giấy tờ) *</label><input id="px-fullName" class="input" placeholder="NGUYEN VAN A"/></div>
+      <div class="col-span-2"><label class="label">SĐT cá nhân</label><input id="px-phone" class="input"/></div>
+      <div><label class="label">Giới tính</label>
+        <select id="px-gender" class="input"><option value="">—</option><option value="M">Nam</option><option value="F">Nữ</option><option value="OTHER">Khác</option></select></div>
+      <div><label class="label">Ngày sinh</label><input id="px-dob" type="date" class="input"/></div>
+      <div><label class="label">Loại giấy tờ</label>
+        <select id="px-idType" class="input" onchange="togglePaxPassport()"><option value="CCCD">CCCD</option><option value="CMND">CMND</option><option value="PASSPORT">Hộ chiếu</option><option value="OTHER">Khác</option></select></div>
+      <div><label class="label">Số giấy tờ</label><input id="px-idNumber" class="input"/></div>
+      <div id="px-passport-wrap" class="hidden"><label class="label">Hộ chiếu hết hạn</label><input id="px-passportExpiry" type="date" class="input"/></div>
+      <div><label class="label">Quốc tịch</label><input id="px-nationality" class="input" value="VN"/></div>
+      <div class="col-span-2"><label class="label">🍽 Ăn kiêng / dị ứng thực phẩm</label><input id="px-dietary" class="input" placeholder="vd: ăn chay, dị ứng hải sản"/></div>
+      <div class="col-span-2"><label class="label">🏥 Bệnh nền / thuốc đang dùng</label><input id="px-medical" class="input" placeholder="vd: cao huyết áp, tiểu đường"/></div>
+      <div><label class="label">Liên hệ khẩn — họ tên</label><input id="px-emergencyName" class="input"/></div>
+      <div><label class="label">Liên hệ khẩn — SĐT</label><input id="px-emergencyPhone" class="input"/></div>
+      <div><label class="label">Quan hệ</label><input id="px-emergencyRel" class="input" placeholder="vd: vợ, con, bố"/></div>
+      <div class="flex items-end pb-2"><label class="flex items-center gap-2 text-sm"><input id="px-isLead" type="checkbox" class="w-4 h-4"/> ⭐ Trưởng đoàn</label></div>
+    </div>
+    <div id="paxError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitPax()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalPax')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalZaloFollowers" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
     <h3 class="text-lg font-bold mb-1">💬 Follower của Zalo OA</h3>
@@ -1634,12 +1664,14 @@ async function showDetail(id) {
   showPage('detail');
   document.getElementById('detailContent').innerHTML = `<div class="flex items-center gap-3 p-8"><div class="skeleton h-6 w-32"></div><div class="skeleton h-6 w-48"></div></div>`;
   try {
-    const [{ booking: b }, { brief }] = await Promise.all([
+    const [{ booking: b }, { brief }, rdyRes] = await Promise.all([
       api(`/bookings/${id}`),
-      api(`/bookings/${id}/brief`)
+      api(`/bookings/${id}/brief`),
+      api(`/bookings/${id}/readiness`).catch(() => null),
     ]);
     CURRENT_BRIEF = brief;
     window._curBooking = b;
+    window._curReadiness = rdyRes?.readiness || null;
 
     const nvdhList = STAFF_LIST.filter(s => ['NVDH','TPDH'].includes(s.role));
     const wcList   = STAFF_LIST.filter(s => s.role === 'WC');
@@ -1705,6 +1737,8 @@ async function showDetail(id) {
             </div>
           </div>
 
+          ${renderReadiness(b, window._curReadiness)}
+
           <!-- Status update with visual progress -->
           <div class="bg-white rounded-xl shadow-sm p-6">
             ${(() => {
@@ -1754,6 +1788,7 @@ async function showDetail(id) {
           </div>
 
           ${renderTourChecklist(b)}
+          ${renderPassengers(b)}
           ${renderDailyReports(b)}
 
           <!-- Assign with dropdowns -->
@@ -1901,6 +1936,15 @@ async function submitEditBooking() {
 
 async function updateStatus(id, status) {
   try {
+    // Cổng Go/No-Go: không cho tour chạy mù khi còn điều kiện bắt buộc chưa đạt
+    if (status === 'IN_PROGRESS') {
+      const r = window._curReadiness;
+      if (r && r.verdict === 'NO_GO') {
+        const list = r.blocking.map(x => `• ${x.label} — ${x.detail}`).join('\n');
+        if (!confirm(`⛔ Tour CHƯA sẵn sàng (NO-GO). Còn ${r.blocking.length} điều kiện bắt buộc:\n\n${list}\n\nVẫn cho tour khởi hành?`))
+          return;
+      }
+    }
     const note = document.getElementById('statusNote')?.value || '';
     await api(`/bookings/${id}/status`, { method:'PATCH', body: JSON.stringify({status, note}) });
     toast(`Đã cập nhật status → ${status}`);
@@ -2250,6 +2294,172 @@ async function exportBookingCSV() {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ── Go/No-Go readiness gate ───────────────────────────────
+function renderReadiness(b, r) {
+  if (!r || ['COMPLETED','CANCELLED'].includes(b.status)) return '';
+  const go = r.verdict === 'GO';
+  const rows = r.checks.map(c => {
+    const icon = c.pass ? '✅' : (c.severity === 'critical' ? '⛔' : '⚠️');
+    const cls  = c.pass ? 'text-gray-700'
+      : (c.severity === 'critical' ? 'text-red-600 font-semibold' : 'text-amber-600');
+    return `<div class="flex items-center gap-2 text-sm py-1 border-b border-gray-50 last:border-0">
+      <span class="flex-shrink-0">${icon}</span>
+      <span class="${cls}">${esc(c.label)}</span>
+      <span class="ml-auto text-xs text-right ${c.pass ? 'text-gray-400' : cls}">${esc(c.detail)}</span>
+    </div>`;
+  }).join('');
+  const headCls = go ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300';
+  const badge = go
+    ? '<span class="bg-green-600 text-white text-sm font-bold px-3 py-1 rounded-full">✅ GO — Sẵn sàng khởi hành</span>'
+    : '<span class="bg-red-600 text-white text-sm font-bold px-3 py-1 rounded-full">⛔ NO-GO — Chưa được chạy</span>';
+  const barCls = go ? 'bg-green-500' : r.score >= 60 ? 'bg-amber-400' : 'bg-red-500';
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6 border-2 ${headCls}">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h4 class="font-bold text-gray-800">🚦 Go / No-Go — Kiểm tra sẵn sàng</h4>
+        ${badge}
+      </div>
+      <div class="flex items-center gap-3 mb-3">
+        <div class="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+          <div class="h-full ${barCls} transition-all" style="width:${r.score}%"></div>
+        </div>
+        <span class="text-sm font-bold ${go ? 'text-green-600' : 'text-gray-700'}">${r.passedCount}/${r.total}</span>
+      </div>
+      ${!go ? `<div class="mb-3 bg-red-100 text-red-800 rounded-lg p-3 text-sm">
+        <strong>Còn ${r.blocking.length} điều kiện BẮT BUỘC chưa đạt:</strong>
+        <ul class="list-disc ml-5 mt-1">${r.blocking.map(x => `<li>${esc(x.label)} — ${esc(x.detail)}</li>`).join('')}</ul>
+      </div>` : ''}
+      <div>${rows}</div>
+    </div>`;
+}
+
+// ── Passengers (hồ sơ hành khách) ─────────────────────────
+const PAX_GENDER_LABELS = { M: 'Nam', F: 'Nữ', OTHER: 'Khác' };
+const PAX_IDTYPE_LABELS = { CCCD: 'CCCD', CMND: 'CMND', PASSPORT: 'Hộ chiếu', OTHER: 'Khác' };
+
+function canEditPax(b) {
+  return ['CEO','TPDH','NVDH'].includes(USER.role) && !['COMPLETED','CANCELLED'].includes(b.status);
+}
+
+function renderPassengers(b) {
+  const total = (b.adults || 0) + (b.children || 0);
+  const pax = b.passengers || [];
+  const editable = canEditPax(b);
+  const complete = pax.length >= total && total > 0;
+
+  const rows = pax.map((p, i) => {
+    const flags = [];
+    if (p.dietary) flags.push(`<span class="text-orange-600" title="Ăn kiêng/dị ứng">🍽 ${esc(p.dietary)}</span>`);
+    if (p.medical) flags.push(`<span class="text-red-600" title="Y tế">🏥 ${esc(p.medical)}</span>`);
+    const idStr = p.idNumber ? `${PAX_IDTYPE_LABELS[p.idType] || p.idType}: ${esc(p.idNumber)}` : '<span class="text-red-400">chưa có giấy tờ</span>';
+    const sos = p.emergencyPhone ? `${esc(p.emergencyName || '')} ${esc(p.emergencyPhone)}` : '<span class="text-amber-500">thiếu LH khẩn</span>';
+    return `<div class="flex items-start gap-2 px-3 py-2.5 border-t border-gray-100 text-sm">
+      <span class="text-gray-400 w-5 flex-shrink-0">${i + 1}</span>
+      <div class="flex-1 min-w-0">
+        <p class="font-medium text-gray-800">${p.isLead ? '⭐ ' : ''}${esc(p.fullName)}${p.gender ? ` <span class="text-xs text-gray-400">(${PAX_GENDER_LABELS[p.gender]})</span>` : ''}</p>
+        <p class="text-xs text-gray-500">${idStr}${p.phone ? ' · ☎ ' + esc(p.phone) : ''} · 🆘 ${sos}</p>
+        ${flags.length ? `<p class="text-xs mt-0.5 flex flex-wrap gap-x-3">${flags.join('')}</p>` : ''}
+      </div>
+      ${editable ? `<div class="flex gap-1 flex-shrink-0">
+        <button data-p="${p.paxId}" onclick="openPaxModal(this.dataset.p)" class="text-gray-400 hover:text-blue-600" title="Sửa">✏️</button>
+        <button data-p="${p.paxId}" onclick="deletePax(this.dataset.p)" class="text-gray-400 hover:text-red-600" title="Xoá">🗑</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  const status = complete
+    ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ đủ danh sách</span>'
+    : `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">${pax.length}/${total} — thiếu ${Math.max(0, total - pax.length)} khách</span>`;
+
+  return `
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h4 class="font-semibold text-gray-700">👥 Hồ sơ hành khách</h4>
+        <div class="flex items-center gap-2">${status}
+          ${editable ? `<button onclick="openPaxModal()" class="text-xs bg-blue-900 text-white px-3 py-1 rounded-lg hover:bg-blue-800">＋ Thêm khách</button>` : ''}
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mb-2">Tên đúng giấy tờ, giấy tờ tuỳ thân, y tế/dị ứng, liên hệ khẩn — nuôi manifest & Go/No-Go.</p>
+      ${pax.length ? `<div class="border border-gray-100 rounded-lg">${rows}</div>`
+        : `<div class="text-center py-6 text-gray-400 text-sm">Chưa có hành khách nào.
+             ${editable ? `<button onclick="seedLeadPax()" class="block mx-auto mt-2 text-blue-700 hover:underline">＋ Điền trưởng đoàn từ thông tin khách</button>` : ''}</div>`}
+    </div>`;
+}
+
+function togglePaxPassport() {
+  const isPp = document.getElementById('px-idType').value === 'PASSPORT';
+  document.getElementById('px-passport-wrap').classList.toggle('hidden', !isPp);
+}
+
+function openPaxModal(paxId) {
+  const b = window._curBooking;
+  if (!b) return;
+  const p = paxId ? (b.passengers || []).find(x => x.paxId === paxId) : null;
+  document.getElementById('px-title').textContent = p ? '👤 Sửa hành khách' : '👤 Thêm hành khách';
+  document.getElementById('px-paxid').value = paxId || '';
+  const set = (id, v) => document.getElementById(id).value = v || '';
+  set('px-fullName', p?.fullName); set('px-phone', p?.phone); set('px-gender', p?.gender);
+  set('px-dob', p?.dob); set('px-idType', p?.idType || 'CCCD'); set('px-idNumber', p?.idNumber);
+  set('px-passportExpiry', p?.passportExpiry); set('px-nationality', p?.nationality || 'VN');
+  set('px-dietary', p?.dietary); set('px-medical', p?.medical);
+  set('px-emergencyName', p?.emergencyName); set('px-emergencyPhone', p?.emergencyPhone);
+  set('px-emergencyRel', p?.emergencyRel);
+  document.getElementById('px-isLead').checked = !!p?.isLead;
+  document.getElementById('paxError').classList.add('hidden');
+  togglePaxPassport();
+  document.getElementById('modalPax').classList.remove('hidden');
+  setTimeout(() => document.getElementById('px-fullName').focus(), 60);
+}
+
+function seedLeadPax() {
+  const b = window._curBooking;
+  if (!b) return;
+  openPaxModal();
+  document.getElementById('px-fullName').value = b.customer?.name || '';
+  document.getElementById('px-phone').value = b.customer?.phone || '';
+  document.getElementById('px-isLead').checked = true;
+}
+
+async function submitPax() {
+  const b = window._curBooking;
+  const paxId = document.getElementById('px-paxid').value;
+  const errEl = document.getElementById('paxError');
+  const body = {
+    fullName: document.getElementById('px-fullName').value.trim(),
+    phone: document.getElementById('px-phone').value.trim(),
+    gender: document.getElementById('px-gender').value,
+    dob: document.getElementById('px-dob').value,
+    idType: document.getElementById('px-idType').value,
+    idNumber: document.getElementById('px-idNumber').value.trim(),
+    passportExpiry: document.getElementById('px-passportExpiry').value,
+    nationality: document.getElementById('px-nationality').value.trim(),
+    dietary: document.getElementById('px-dietary').value.trim(),
+    medical: document.getElementById('px-medical').value.trim(),
+    emergencyName: document.getElementById('px-emergencyName').value.trim(),
+    emergencyPhone: document.getElementById('px-emergencyPhone').value.trim(),
+    emergencyRel: document.getElementById('px-emergencyRel').value.trim(),
+    isLead: document.getElementById('px-isLead').checked,
+  };
+  if (!body.fullName) { errEl.textContent = 'Họ tên không được trống'; errEl.classList.remove('hidden'); return; }
+  try {
+    if (paxId) await api(`/bookings/${b.bookingId}/passengers/${paxId}`, { method:'PATCH', body: JSON.stringify(body) });
+    else       await api(`/bookings/${b.bookingId}/passengers`, { method:'POST', body: JSON.stringify(body) });
+    closeModal('modalPax');
+    toast('Đã lưu hành khách');
+    showDetail(b.bookingId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function deletePax(paxId) {
+  const b = window._curBooking;
+  if (!confirm('Xoá hành khách này khỏi danh sách?')) return;
+  try {
+    await api(`/bookings/${b.bookingId}/passengers/${paxId}`, { method:'DELETE' });
+    toast('Đã xoá hành khách');
+    showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── Tour Manifest (danh sách hành khách) ──────────────────
 function printManifest(bookingId) {
   const b = window._curBooking;
@@ -2286,13 +2496,33 @@ function printManifest(bookingId) {
   </div>
   ${b.specialReqs ? `<div class="card" style="margin-bottom:16px;border-color:#f59e0b;background:#fffbeb"><div class="label">⚠️ Yêu cầu đặc biệt / Lưu ý</div><div class="val special">${b.specialReqs}</div></div>` : ''}
   <table>
-    <thead><tr><th>#</th><th>Họ tên</th><th>SĐT</th><th>Email</th><th>Ghi chú / Yêu cầu</th><th>Ký nhận</th></tr></thead>
+    <thead><tr><th>#</th><th>Họ tên</th><th>Giới tính / Năm sinh</th><th>Giấy tờ</th><th>SĐT</th><th>Y tế / Dị ứng</th><th>LH khẩn cấp</th><th>Ký nhận</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td>${b.customer.name}</td><td>${b.customer.phone}</td><td>${b.customer.email||'—'}</td>
-          <td class="${b.specialReqs?'special':''}">${b.specialReqs||''}</td><td class="sign"></td></tr>
-      ${Array.from({length: Math.max(0,(b.adults+(b.children||0))-1)}, (_,i) =>
-        `<tr><td>${i+2}</td><td></td><td></td><td></td><td></td><td class="sign"></td></tr>`
-      ).join('')}
+      ${(() => {
+        const pax = b.passengers || [];
+        const idL = { CCCD:'CCCD', CMND:'CMND', PASSPORT:'HC', OTHER:'' };
+        const gL = { M:'Nam', F:'Nữ', OTHER:'Khác' };
+        if (pax.length) {
+          return pax.map((p, i) => {
+            const care = [p.dietary, p.medical].filter(Boolean).join(' · ');
+            const sos = p.emergencyPhone ? `${p.emergencyName||''} ${p.emergencyPhone}${p.emergencyRel?' ('+p.emergencyRel+')':''}` : '';
+            const dobY = (p.dob||'').slice(0,4);
+            return `<tr><td>${i+1}</td>
+              <td>${p.isLead?'⭐ ':''}${p.fullName||''}</td>
+              <td>${[gL[p.gender]||'', dobY].filter(Boolean).join(' / ')}</td>
+              <td>${p.idNumber?((idL[p.idType]||'')+' '+p.idNumber):''}</td>
+              <td>${p.phone||''}</td>
+              <td class="${care?'special':''}">${care}</td>
+              <td>${sos}</td><td class="sign"></td></tr>`;
+          }).join('');
+        }
+        // Chưa nhập hồ sơ khách — in bảng trống theo số lượng để điền tay
+        const total = b.adults + (b.children||0);
+        return `<tr><td>1</td><td>${b.customer.name}</td><td></td><td></td><td>${b.customer.phone}</td>
+            <td class="${b.specialReqs?'special':''}">${b.specialReqs||''}</td><td></td><td class="sign"></td></tr>` +
+          Array.from({length: Math.max(0, total-1)}, (_,i) =>
+            `<tr><td>${i+2}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="sign"></td></tr>`).join('');
+      })()}
     </tbody>
   </table>
   <div class="grid2" style="margin-top:20px">

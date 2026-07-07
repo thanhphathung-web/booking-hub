@@ -5,6 +5,7 @@ const { ensureChecklist, recomputeDeadlines } = require('../db/tourChecklist');
 const { getRunningBookings, tasksFor } = require('../services/tasks');
 const { createBooking } = require('../services/createBooking');
 const { receiptsTotal, collectedOf, recomputePaid } = require('../services/payments');
+const { assessReadiness } = require('../services/readiness');
 
 // Booking status flow:
 // NEW → CONFIRMED (Cty1) → IN_PROGRESS → COMPLETED | CANCELLED
@@ -519,6 +520,117 @@ router.post('/:id/daily-report', requireAuth, async (req, res) => {
     await dbAsync.update('bookings', { bookingId: req.params.id },
       { $set: { updatedAt: now }, $push: { dailyReports: report } });
     res.status(201).json({ message: 'Đã nộp Daily Tour Report', report });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Passengers (hồ sơ từng hành khách) ────────────────────
+// Diệt lỗi sai tên vé/visa, thiếu thông tin y tế & liên hệ khẩn — nuôi manifest + Go/No-Go
+const PAX_ID_TYPES = ['CCCD', 'CMND', 'PASSPORT', 'OTHER'];
+const PAX_GENDERS  = ['M', 'F', 'OTHER'];
+
+function sanitizePax(body, base = {}) {
+  const p = { ...base };
+  const S = v => String(v == null ? '' : v).trim();
+  if (body.fullName       !== undefined) p.fullName       = S(body.fullName);
+  if (body.phone          !== undefined) p.phone          = S(body.phone);
+  if (body.dob            !== undefined) p.dob            = S(body.dob);
+  if (body.gender         !== undefined) p.gender         = PAX_GENDERS.includes(body.gender) ? body.gender : '';
+  if (body.idType         !== undefined) p.idType         = PAX_ID_TYPES.includes(body.idType) ? body.idType : 'CCCD';
+  if (body.idNumber       !== undefined) p.idNumber       = S(body.idNumber);
+  if (body.nationality    !== undefined) p.nationality    = S(body.nationality) || 'VN';
+  if (body.passportExpiry !== undefined) p.passportExpiry = S(body.passportExpiry);
+  if (body.dietary        !== undefined) p.dietary        = S(body.dietary);
+  if (body.medical        !== undefined) p.medical        = S(body.medical);
+  if (body.emergencyName  !== undefined) p.emergencyName  = S(body.emergencyName);
+  if (body.emergencyPhone !== undefined) p.emergencyPhone = S(body.emergencyPhone);
+  if (body.emergencyRel   !== undefined) p.emergencyRel   = S(body.emergencyRel);
+  if (body.isLead         !== undefined) p.isLead         = !!body.isLead;
+  return p;
+}
+
+function paxDateErr(p) {
+  for (const f of ['dob', 'passportExpiry']) {
+    if (p[f] && !/^\d{4}-\d{2}-\d{2}$/.test(p[f])) return `${f} phải dạng YYYY-MM-DD`;
+  }
+  return null;
+}
+
+router.post('/:id/passengers', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['COMPLETED', 'CANCELLED'].includes(booking.status))
+      return res.status(409).json({ error: `Booking đã ${booking.status} — không sửa hành khách được nữa` });
+
+    const now = new Date().toISOString();
+    const pax = sanitizePax(req.body, {
+      paxId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      idType: 'CCCD', nationality: 'VN', isLead: false,
+      by: req.user.username, name: req.user.name, at: now,
+    });
+    if (!pax.fullName) return res.status(400).json({ error: 'Thiếu họ tên hành khách' });
+    const dErr = paxDateErr(pax);
+    if (dErr) return res.status(400).json({ error: dErr });
+
+    const passengers = booking.passengers || [];
+    // Chỉ 1 trưởng đoàn — set người mới làm lead thì bỏ lead người cũ
+    if (pax.isLead) passengers.forEach(x => { x.isLead = false; });
+    passengers.push(pax);
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { passengers, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'PAX_ADDED', bookingId: req.params.id,
+      to: pax.fullName, by: req.user.username, at: now });
+    res.status(201).json({ message: 'Đã thêm hành khách', passenger: pax });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/:id/passengers/:paxId', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['COMPLETED', 'CANCELLED'].includes(booking.status))
+      return res.status(409).json({ error: `Booking đã ${booking.status} — không sửa hành khách được nữa` });
+
+    const passengers = booking.passengers || [];
+    const target = passengers.find(x => x.paxId === req.params.paxId);
+    if (!target) return res.status(404).json({ error: 'Không tìm thấy hành khách' });
+
+    const updated = sanitizePax(req.body, target);
+    if (!updated.fullName) return res.status(400).json({ error: 'Họ tên không được trống' });
+    const dErr = paxDateErr(updated);
+    if (dErr) return res.status(400).json({ error: dErr });
+    Object.assign(target, updated);
+    if (target.isLead) passengers.forEach(x => { if (x !== target) x.isLead = false; });
+
+    const now = new Date().toISOString();
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { passengers, updatedAt: now } });
+    res.json({ message: 'Đã cập nhật hành khách', passenger: target });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/passengers/:paxId', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (['COMPLETED', 'CANCELLED'].includes(booking.status))
+      return res.status(409).json({ error: `Booking đã ${booking.status} — không sửa hành khách được nữa` });
+    const passengers = (booking.passengers || []).filter(x => x.paxId !== req.params.paxId);
+    if (passengers.length === (booking.passengers || []).length)
+      return res.status(404).json({ error: 'Không tìm thấy hành khách' });
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { passengers, updatedAt: new Date().toISOString() } });
+    res.json({ message: 'Đã xoá hành khách' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/bookings/:id/readiness ───────────────────────
+// Go/No-Go: bảng chấm sẵn sàng khởi hành (BẮT BUỘC + cảnh báo)
+router.get('/:id/readiness', ...requirePerm('bookings:read'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const ensured = ensureChecklist(booking);
+    if (ensured) booking.checklist = ensured;
+    res.json({ bookingId: booking.bookingId, readiness: assessReadiness(booking) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

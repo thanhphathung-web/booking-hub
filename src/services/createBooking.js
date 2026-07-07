@@ -39,6 +39,7 @@ async function createBooking(body, createdBy) {
     payment: { amount: body.payment?.amount || 0, paid: body.payment?.paid || false, receipts: [] },
     source: body.source || 'ADMIN',  // ADMIN | WEBSITE | PLATFORM | DIRECT
     notes: [],
+    passengers: [],     // hồ sơ từng hành khách (tên/giấy tờ/y tế/liên hệ khẩn) — nuôi Go/No-Go + manifest
     expenses: [],       // sổ chi phí thực tế
     dailyReports: [],   // Daily Tour Report
     productId,          // sản phẩm gốc (nếu tạo từ catalog)

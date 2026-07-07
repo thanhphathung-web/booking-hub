@@ -257,6 +257,67 @@ async function login(username, password) {
       check('trả xong biến khỏi sổ công nợ', !r.data?.suppliers?.find(s => s.nccId === nccId));
     }
 
+    console.log('\n— Hồ sơ hành khách + Go/No-Go —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Readiness 2N1Đ', tourDate: '2030-09-01', adults: 2,
+        customer: { name: 'Truong Doan', phone: '0900000031' },
+        payment: { amount: 5000000 },
+      }});
+      const rid = r.data.booking.bookingId;
+      check('booking mới có mảng passengers rỗng', Array.isArray(r.data.booking.passengers) && r.data.booking.passengers.length === 0);
+
+      r = await req('GET', `/api/bookings/${rid}/readiness`, { token: ceo });
+      check('readiness ban đầu → NO_GO', r.data?.readiness?.verdict === 'NO_GO', JSON.stringify(r.data?.readiness?.verdict));
+      check('có điều kiện bắt buộc chưa đạt', (r.data?.readiness?.blocking || []).some(x => x.key === 'pax_manifest'));
+
+      r = await req('POST', `/api/bookings/${rid}/passengers`, { token: ceo, body: { phone: '09' } });
+      check('thêm khách thiếu tên → 400', r.status === 400);
+      r = await req('POST', `/api/bookings/${rid}/passengers`, { token: cs, body: { fullName: 'X' } });
+      check('CS (không có bookings:update) thêm khách → 403', r.status === 403);
+      r = await req('POST', `/api/bookings/${rid}/passengers`, { token: nvdh, body: {
+        fullName: 'NGUYEN VAN A', idNumber: '0123', emergencyPhone: '0988', isLead: true } });
+      check('NVDH thêm trưởng đoàn → 201', r.status === 201);
+      const pax1 = r.data.passenger.paxId;
+      r = await req('POST', `/api/bookings/${rid}/passengers`, { token: nvdh, body: {
+        fullName: 'NGUYEN THI B', idNumber: '0456', emergencyPhone: '0977', isLead: true } });
+      check('thêm khách 2 (cũng đánh lead) → 201', r.status === 201);
+      const pax2 = r.data.passenger.paxId;
+
+      r = await req('GET', `/api/bookings/${rid}`, { token: ceo });
+      const plist = r.data.booking.passengers;
+      check('booking lưu 2 hành khách', plist.length === 2);
+      check('chỉ 1 trưởng đoàn (lead mới thắng)', plist.filter(p => p.isLead).length === 1 && plist.find(p => p.paxId === pax2).isLead === true);
+
+      r = await req('PATCH', `/api/bookings/${rid}/passengers/${pax1}`, { token: nvdh, body: { dietary: 'ăn chay' } });
+      check('sửa hành khách (thêm ăn kiêng) → OK', r.status === 200 && r.data.passenger.dietary === 'ăn chay');
+      r = await req('PATCH', `/api/bookings/${rid}/passengers/${pax1}`, { token: nvdh, body: { passportExpiry: 'sai-ngay' } });
+      check('ngày sai định dạng → 400', r.status === 400);
+
+      // Chuẩn bị đủ để GO: confirm → tick PO-02/03/07, phân NVDH, thu đủ tiền
+      await req('PATCH', `/api/bookings/${rid}/status`, { token: ceo, body: { status: 'CONFIRMED' } });
+      await req('PATCH', `/api/bookings/${rid}/assign`, { token: ceo, body: { assignedTo: 'nvdh' } });
+      await req('POST', `/api/bookings/${rid}/payments`, { token: ketoan, body: { amount: 5000000 } });
+
+      // Chỉ cần các mục BẮT BUỘC đạt là GO (mục cảnh báo chưa xong vẫn GO)
+      for (const code of ['PO-02','PO-03','PO-07'])
+        await req('PATCH', `/api/bookings/${rid}/checklist/${code}`, { token: ceo, body: { done: true } });
+      r = await req('GET', `/api/bookings/${rid}/readiness`, { token: ceo });
+      check('đủ điều kiện bắt buộc → GO (dù cảnh báo còn)', r.data?.readiness?.verdict === 'GO', JSON.stringify(r.data?.readiness?.blocking));
+      check('còn cảnh báo reconfirm chưa xong → score < 100', r.data?.readiness?.score < 100 && r.data?.readiness?.score >= 80, String(r.data?.readiness?.score));
+
+      // Tick nốt mục cảnh báo → 100%
+      for (const code of ['PO-16','PO-17'])
+        await req('PATCH', `/api/bookings/${rid}/checklist/${code}`, { token: ceo, body: { done: true } });
+      r = await req('GET', `/api/bookings/${rid}/readiness`, { token: ceo });
+      check('xong cả cảnh báo → score = 100', r.data?.readiness?.score === 100, String(r.data?.readiness?.score));
+
+      r = await req('DELETE', `/api/bookings/${rid}/passengers/${pax1}`, { token: nvdh });
+      check('xoá 1 hành khách → OK', r.status === 200);
+      r = await req('GET', `/api/bookings/${rid}/readiness`, { token: ceo });
+      check('thiếu khách → pax_manifest lại chặn GO', r.data?.readiness?.verdict === 'NO_GO');
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');
