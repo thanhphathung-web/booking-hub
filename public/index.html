@@ -889,6 +889,36 @@
   </div>
 </div>
 
+<div id="modalIncident" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg my-8">
+    <h3 id="inc-title-label" class="text-lg font-bold mb-4">🚨 Ghi nhận sự cố</h3>
+    <input id="inc-id" type="hidden"/>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Mức độ *</label>
+        <select id="inc-severity" class="input">
+          <option value="LOW">Thấp</option><option value="MEDIUM" selected>Trung bình</option>
+          <option value="HIGH">Cao</option><option value="CRITICAL">Nghiêm trọng</option>
+        </select></div>
+      <div><label class="label">Phân loại *</label>
+        <select id="inc-category" class="input">
+          <option value="HEALTH">🏥 Y tế</option><option value="ACCIDENT">⚠️ Tai nạn</option>
+          <option value="SUPPLIER">🤝 NCC</option><option value="WEATHER">🌧 Thời tiết</option>
+          <option value="CUSTOMER">🙍 Khách</option><option value="LOGISTICS">🚌 Hậu cần</option>
+          <option value="OTHER" selected>📌 Khác</option>
+        </select></div>
+      <div class="col-span-2"><label class="label">Tiêu đề *</label><input id="inc-title" class="input" placeholder="vd: Khách bị say xe nặng"/></div>
+      <div class="col-span-2"><label class="label">Diễn biến *</label><textarea id="inc-desc" class="input h-20" placeholder="Thời gian, địa điểm, diễn biến cụ thể"></textarea></div>
+      <div class="col-span-2"><label class="label">Biện pháp xử lý</label><textarea id="inc-action" class="input h-16" placeholder="Đã xử lý thế nào, kết quả"></textarea></div>
+      <div><label class="label">Ngày xảy ra</label><input id="inc-occurred" type="date" class="input"/></div>
+    </div>
+    <div id="incError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitIncident()" class="bg-red-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-red-500">Lưu sự cố</button>
+      <button onclick="closeModal('modalIncident')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalItin" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
   <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl my-8">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -1188,7 +1218,7 @@ async function loadDashboard(days, from, to) {
 
   try {
     const stats = await api(`/bookings/stats${q}`);
-    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon } = stats;
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents } = stats;
 
     // Urgent banner
     const banner = document.getElementById('urgentBanner');
@@ -1208,6 +1238,7 @@ async function loadDashboard(days, from, to) {
       { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
       { label:'Sắp KH chưa thu đủ',value: dueSoonUnpaid ?? 0,  color:'bg-rose-700',   icon:'⏳', filter:null, filterPaid:'false' },
       { label:'NCC chưa xác nhận (7N)',value: unconfirmedSoon ?? 0, color:'bg-amber-600', icon:'🤝', filter:null },
+      { label:'Sự cố đang mở',     value: openIncidents ?? 0,  color:'bg-red-700',    icon:'🚨', filter:'IN_PROGRESS' },
     ];
     document.getElementById('statCards').innerHTML = cards.map(c => `
       <div onclick="${c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
@@ -1757,6 +1788,7 @@ async function showDetail(id) {
                 ${['CONFIRMED','IN_PROGRESS'].includes(b.status) ? `<button onclick="openConfirmMsg()" class="text-xs border border-blue-300 text-blue-700 px-3 py-1 rounded-lg hover:bg-blue-50">📨 Xác nhận KH</button>` : ''}
                 <button onclick="cloneBooking(window._curBooking)" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50" title="Tạo booking mới với cùng khách hàng và sản phẩm">📋 Nhân bản</button>
                 <button onclick="printManifest('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">📄 Manifest</button>
+                <button onclick="printSosCard('${b.bookingId}')" class="text-xs border border-red-300 text-red-700 px-3 py-1 rounded-lg hover:bg-red-50">🆘 Thẻ SOS</button>
                 <button onclick="printTourDossier('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In Tour File</button>
               </div>
             </div>
@@ -1838,6 +1870,7 @@ async function showDetail(id) {
           ${renderServices(b)}
           ${renderItinerary(b)}
           ${renderRooming(b)}
+          ${renderIncidents(b)}
           ${renderDailyReports(b)}
 
           <!-- Assign with dropdowns -->
@@ -2830,6 +2863,148 @@ async function submitDailyReport(bookingId) {
     toast('Đã nộp Daily Tour Report');
     showDetail(bookingId);
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Sổ sự cố (incident register) ──────────────────────────
+const INC_SEV = {
+  LOW:      { label:'Thấp',        cls:'bg-gray-100 text-gray-600',  dot:'bg-gray-400' },
+  MEDIUM:   { label:'Trung bình',  cls:'bg-amber-100 text-amber-700', dot:'bg-amber-400' },
+  HIGH:     { label:'Cao',         cls:'bg-orange-100 text-orange-700', dot:'bg-orange-500' },
+  CRITICAL: { label:'Nghiêm trọng', cls:'bg-red-600 text-white',      dot:'bg-red-600' },
+};
+const INC_CAT = { HEALTH:'🏥 Y tế', ACCIDENT:'⚠️ Tai nạn', SUPPLIER:'🤝 NCC', WEATHER:'🌧 Thời tiết', CUSTOMER:'🙍 Khách', LOGISTICS:'🚌 Hậu cần', OTHER:'📌 Khác' };
+
+function renderIncidents(b) {
+  const incs = b.incidents || [];
+  if (!['CONFIRMED','IN_PROGRESS','COMPLETED'].includes(b.status) && !incs.length) return '';
+  const editable = b.status !== 'CANCELLED';
+  const open = incs.filter(i => i.status === 'OPEN').length;
+  const rows = incs.length ? [...incs].reverse().map(i => {
+    const sev = INC_SEV[i.severity] || INC_SEV.MEDIUM;
+    const canDel = ['CEO','TPDH'].includes(USER.role) || i.by === USER.username;
+    return `<div class="py-2 border-t border-gray-100 first:border-0 ${i.status==='OPEN'?'':'opacity-60'}">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs px-2 py-0.5 rounded-full ${sev.cls}">${sev.label}</span>
+        <span class="text-xs text-gray-500">${INC_CAT[i.category] || i.category}</span>
+        <span class="font-semibold text-sm text-gray-800 flex-1 min-w-0">${esc(i.title)}</span>
+        ${i.status==='OPEN'
+          ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">🔴 Đang mở</span>'
+          : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ Đã xử lý</span>'}
+      </div>
+      <p class="text-sm text-gray-700 mt-1">${esc(i.description)}</p>
+      ${i.action ? `<p class="text-xs text-gray-600 mt-0.5">🛠 Xử lý: ${esc(i.action)}</p>` : ''}
+      <div class="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-400">
+        <span>${esc(i.name || i.by)} · ${i.occurredAt || (i.at||'').slice(0,10)}</span>
+        ${i.status==='RESOLVED' && i.resolvedAt ? `<span class="text-green-600">✓ xử lý ${new Date(i.resolvedAt).toLocaleDateString('vi-VN')}</span>` : ''}
+        ${editable ? `<button onclick="openIncidentModal('${i.incId}')" class="text-blue-600 hover:underline">sửa</button>` : ''}
+        ${editable && i.status==='OPEN' ? `<button onclick="resolveIncident('${i.incId}')" class="text-green-700 hover:underline font-semibold">✓ đánh dấu đã xử lý</button>` : ''}
+        ${editable && i.status==='RESOLVED' ? `<button onclick="setIncidentStatus('${i.incId}','OPEN')" class="text-gray-400 hover:underline">mở lại</button>` : ''}
+        ${canDel ? `<button onclick="delIncident('${i.incId}')" class="text-red-400 hover:underline">xoá</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : '<p class="text-gray-400 text-sm">Chưa ghi nhận sự cố nào</p>';
+  return `<div class="bg-white rounded-xl shadow-sm p-6 ${open?'border border-red-200':''}">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h4 class="font-semibold text-gray-700">🚨 Sổ sự cố${open?` · <span class="text-red-600">${open} đang mở</span>`:''}</h4>
+      ${editable ? `<button onclick="openIncidentModal()" class="text-xs bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-500">＋ Ghi sự cố</button>` : ''}
+    </div>
+    <div>${rows}</div>
+  </div>`;
+}
+
+function openIncidentModal(incId) {
+  const b = window._curBooking;
+  const inc = incId ? (b.incidents || []).find(x => x.incId === incId) : null;
+  document.getElementById('inc-title-label').textContent = inc ? '✏️ Sửa sự cố' : '🚨 Ghi nhận sự cố';
+  document.getElementById('inc-id').value = incId || '';
+  const set = (id, v) => document.getElementById(id).value = v || '';
+  set('inc-title', inc?.title); set('inc-desc', inc?.description); set('inc-action', inc?.action);
+  document.getElementById('inc-severity').value = inc?.severity || 'MEDIUM';
+  document.getElementById('inc-category').value = inc?.category || 'OTHER';
+  document.getElementById('inc-occurred').value = inc?.occurredAt || new Date().toISOString().slice(0,10);
+  document.getElementById('incError').classList.add('hidden');
+  document.getElementById('modalIncident').classList.remove('hidden');
+  setTimeout(() => document.getElementById('inc-title').focus(), 60);
+}
+async function submitIncident() {
+  const b = window._curBooking;
+  const incId = document.getElementById('inc-id').value;
+  const errEl = document.getElementById('incError');
+  const body = {
+    title: document.getElementById('inc-title').value.trim(),
+    description: document.getElementById('inc-desc').value.trim(),
+    action: document.getElementById('inc-action').value.trim(),
+    severity: document.getElementById('inc-severity').value,
+    category: document.getElementById('inc-category').value,
+    occurredAt: document.getElementById('inc-occurred').value,
+  };
+  if (!body.title || !body.description) {
+    errEl.textContent = 'Cần tiêu đề và mô tả diễn biến'; errEl.classList.remove('hidden'); return;
+  }
+  try {
+    if (incId) await api(`/bookings/${b.bookingId}/incidents/${incId}`, { method:'PATCH', body: JSON.stringify(body) });
+    else       await api(`/bookings/${b.bookingId}/incidents`, { method:'POST', body: JSON.stringify(body) });
+    closeModal('modalIncident'); toast('Đã lưu sự cố'); showDetail(b.bookingId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+async function setIncidentStatus(incId, status) {
+  const b = window._curBooking;
+  try { await api(`/bookings/${b.bookingId}/incidents/${incId}`, { method:'PATCH', body: JSON.stringify({ status }) }); showDetail(b.bookingId); }
+  catch(e) { toast(e.message, 'error'); }
+}
+async function resolveIncident(incId) {
+  const action = prompt('Biện pháp xử lý / kết quả (tuỳ chọn):', '');
+  if (action === null) return; // huỷ
+  const b = window._curBooking;
+  try {
+    const body = { status:'RESOLVED' };
+    if (action.trim()) body.action = action.trim();
+    await api(`/bookings/${b.bookingId}/incidents/${incId}`, { method:'PATCH', body: JSON.stringify(body) });
+    toast('Đã đánh dấu đã xử lý'); showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+async function delIncident(incId) {
+  const b = window._curBooking;
+  if (!confirm('Xoá sự cố này?')) return;
+  try { await api(`/bookings/${b.bookingId}/incidents/${incId}`, { method:'DELETE' }); toast('Đã xoá sự cố', 'warn'); showDetail(b.bookingId); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Thẻ SOS / liên hệ khẩn cấp (SOP) ──────────────────────
+function printSosCard(bookingId) {
+  const b = window._curBooking;
+  if (!b || b.bookingId !== bookingId) { toast('Không tìm thấy dữ liệu', 'error'); return; }
+  const pax = b.passengers || [];
+  const medical = pax.filter(p => p.medical || p.dietary);
+  const paxRows = pax.map((p, i) => `<tr>
+    <td style="padding:4px 8px;border-bottom:1px solid #eee">${i+1}. ${esc(p.fullName)}${p.isLead?' ⭐':''}</td>
+    <td style="padding:4px 8px;border-bottom:1px solid #eee">${p.emergencyPhone?esc(p.emergencyName||'')+' '+esc(p.emergencyPhone)+(p.emergencyRel?' ('+esc(p.emergencyRel)+')':''):'<span style="color:#c00">— thiếu —</span>'}</td>
+  </tr>`).join('');
+  const w = window.open('', '_blank', 'width=800,height=700');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Thẻ SOS — ${b.bookingId}</title>
+  <style>body{font-family:Arial,sans-serif;color:#222;padding:20px;max-width:640px;margin:0 auto}
+  h1{font-size:20px;color:#c00;margin:0 0 4px}.sub{color:#666;font-size:12px;margin-bottom:14px}
+  .box{border:2px solid #c00;border-radius:8px;padding:12px;margin-bottom:12px}
+  .hot{display:flex;justify-content:space-between;font-size:15px;font-weight:bold;padding:4px 0}
+  h2{font-size:13px;color:#c00;margin:14px 0 6px;text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  .warn{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:8px}
+  @media print{body{padding:0}.no-print{display:none}}</style></head><body>
+  <h1>🆘 THẺ LIÊN HỆ KHẨN CẤP</h1>
+  <div class="sub"><strong>${esc(b.product)}</strong> · Khởi hành ${b.tourDate} · Mã ${b.bookingId} · ${b.adults+(b.children||0)} khách</div>
+  <div class="box">
+    <div class="hot"><span>🚑 Cấp cứu 115</span><span>🚓 Công an 113</span><span>🚒 Cứu hoả 114</span></div>
+    <div class="hot"><span>👤 NVDH phụ trách</span><span>${esc(b.assignedTo||'________')} · SĐT: ____________</span></div>
+    <div class="hot"><span>🏢 Trực điều hành 24/7</span><span>____________</span></div>
+    <div class="hot"><span>🏥 Bệnh viện gần nhất</span><span>____________</span></div>
+  </div>
+  <h2>Liên hệ khẩn cấp từng khách</h2>
+  <table><thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #333">Khách</th><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #333">Người nhà / SĐT</th></tr></thead>
+  <tbody>${paxRows || '<tr><td colspan="2" style="padding:8px;color:#aaa">Chưa nhập hồ sơ hành khách</td></tr>'}</tbody></table>
+  ${medical.length ? `<div class="warn"><strong>⚠️ Lưu ý y tế / ăn kiêng:</strong><br>${medical.map(p => `• ${esc(p.fullName)}: ${[p.medical,p.dietary].filter(Boolean).map(esc).join(' · ')}`).join('<br>')}</div>` : ''}
+  <div class="no-print" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="background:#c00;color:#fff;border:none;padding:10px 32px;border-radius:8px;font-size:14px;cursor:pointer">🖨 In thẻ SOS</button></div>
+  </body></html>`);
+  w.document.close();
 }
 
 // ── Sổ chi phí thực tế ────────────────────────────────────

@@ -412,6 +412,38 @@ async function login(username, password) {
       check('booking CANCELLED không sửa lịch trình → 409', r.status === 409);
     }
 
+    console.log('\n— Sổ sự cố + SOP —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Incident 2N1Đ', tourDate: '2030-12-15', adults: 2,
+        customer: { name: 'Khach Inc', phone: '0900000061' } } });
+      const xid = r.data.booking.bookingId;
+      check('booking mới có mảng incidents rỗng', Array.isArray(r.data.booking.incidents));
+
+      r = await req('POST', `/api/bookings/${xid}/incidents`, { token: nvdh, body: { description: 'x' } });
+      check('sự cố thiếu tiêu đề → 400', r.status === 400);
+      r = await req('POST', `/api/bookings/${xid}/incidents`, { token: nvdh, body: { title: 't', description: 'd', severity: 'BAD' } });
+      check('mức độ không hợp lệ → 400', r.status === 400);
+      r = await req('POST', `/api/bookings/${xid}/incidents`, { token: nvdh, body: {
+        title: 'Khách say xe', description: 'Khách A say xe nặng đoạn đèo', severity: 'HIGH', category: 'HEALTH' } });
+      check('NVDH ghi sự cố → 201, status OPEN', r.status === 201 && r.data.incident.status === 'OPEN');
+      const incId = r.data.incident.incId;
+
+      let s = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('stats.openIncidents đếm sự cố mở', s.data.openIncidents >= 1, String(s.data.openIncidents));
+      const before = s.data.openIncidents;
+
+      r = await req('PATCH', `/api/bookings/${xid}/incidents/${incId}`, { token: nvdh, body: { status: 'RESOLVED', action: 'Cho uống thuốc, nghỉ 15 phút' } });
+      check('đánh dấu đã xử lý → RESOLVED + resolvedAt', r.status === 200 && r.data.incident.status === 'RESOLVED' && !!r.data.incident.resolvedAt);
+      s = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('openIncidents giảm sau khi xử lý', s.data.openIncidents === before - 1, `${before}→${s.data.openIncidents}`);
+
+      r = await req('DELETE', `/api/bookings/${xid}/incidents/${incId}`, { token: cs });
+      check('CS (không phải người ghi/CEO/TPDH) xoá sự cố → 403', r.status === 403);
+      r = await req('DELETE', `/api/bookings/${xid}/incidents/${incId}`, { token: nvdh });
+      check('người ghi xoá sự cố → OK', r.status === 200);
+    }
+
     console.log('\n— Backup —');
     {
       const zlib = require('zlib');
@@ -436,7 +468,8 @@ async function login(username, password) {
       check('chỉ trả trường an toàn — không lộ checklist/expenses/costEstimate/passengers/services (PII)',
         r.data?.booking && !('checklist' in r.data.booking) && !('expenses' in r.data.booking)
         && !('costEstimate' in r.data.booking) && !('notes' in r.data.booking)
-        && !('passengers' in r.data.booking) && !('services' in r.data.booking));
+        && !('passengers' in r.data.booking) && !('services' in r.data.booking)
+        && !('incidents' in r.data.booking));
       check('có statusLabel tiếng Việt + timeline', !!r.data?.booking?.statusLabel && Array.isArray(r.data?.booking?.timeline));
       r = await req('POST', '/api/lookup', { body: { bookingId: bid, phone: '0999999999' } });
       check('SĐT sai → 404', r.status === 404);

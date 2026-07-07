@@ -84,7 +84,11 @@ router.get('/stats', requireAuth, async (req, res) => {
       { tourDate: { $gte: today, $lte: in7days }, status: { $nin: ['CANCELLED','COMPLETED'] } });
     const unconfirmedSoon = soonBookings.filter(b =>
       (b.services || []).some(s => s.status === 'REQUESTED')).length;
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon });
+    // Sự cố còn mở trên tour chưa đóng — cần theo dõi xử lý
+    const activeBookings = await dbAsync.find('bookings', { status: { $nin: ['CANCELLED', 'COMPLETED'] } });
+    const openIncidents = activeBookings.reduce((n, b) =>
+      n + (b.incidents || []).filter(i => i.status === 'OPEN').length, 0);
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -766,6 +770,90 @@ router.put('/:id/rooming', ...requirePerm('bookings:update'), async (req, res) =
     const rooming = { rooms: sanitizeRooming(req.body), updatedBy: req.user.username, updatedAt: now };
     await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { rooming, updatedAt: now } });
     res.json({ message: 'Đã lưu rooming list', rooming });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Sổ sự cố (incident register) ──────────────────────────
+// Ghi biên bản sự cố có cấu trúc (OP-09): mức độ, phân loại, biện pháp, trạng thái mở/đã xử lý.
+const INCIDENT_SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+const INCIDENT_CATEGORIES = ['HEALTH', 'ACCIDENT', 'SUPPLIER', 'WEATHER', 'CUSTOMER', 'LOGISTICS', 'OTHER'];
+
+router.post('/:id/incidents', requireAuth, async (req, res) => {
+  try {
+    const { severity = 'MEDIUM', category = 'OTHER', title, description, action = '', occurredAt = '' } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Thiếu tiêu đề sự cố' });
+    if (!description || !description.trim()) return res.status(400).json({ error: 'Thiếu mô tả diễn biến sự cố' });
+    if (!INCIDENT_SEVERITIES.includes(severity))
+      return res.status(400).json({ error: `Mức độ không hợp lệ. Dùng: ${INCIDENT_SEVERITIES.join(', ')}` });
+    if (!INCIDENT_CATEGORIES.includes(category))
+      return res.status(400).json({ error: `Phân loại không hợp lệ. Dùng: ${INCIDENT_CATEGORIES.join(', ')}` });
+    if (occurredAt && !/^\d{4}-\d{2}-\d{2}$/.test(occurredAt))
+      return res.status(400).json({ error: 'Thời điểm xảy ra phải dạng YYYY-MM-DD' });
+
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const now = new Date().toISOString();
+    const inc = {
+      incId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      severity, category, title: title.trim(), description: description.trim(),
+      action: String(action).trim(), occurredAt: occurredAt || now.slice(0, 10),
+      status: 'OPEN', resolvedAt: null, resolvedBy: null,
+      by: req.user.username, name: req.user.name, at: now,
+    };
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { updatedAt: now }, $push: { incidents: inc } });
+    await dbAsync.insert('activity', { type: 'INCIDENT_ADDED', bookingId: req.params.id,
+      to: `${severity}|${inc.title}`, by: req.user.username, at: now });
+    res.status(201).json({ message: 'Đã ghi nhận sự cố', incident: inc });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/:id/incidents/:incId', requireAuth, async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const incidents = booking.incidents || [];
+    const inc = incidents.find(x => x.incId === req.params.incId);
+    if (!inc) return res.status(404).json({ error: 'Không tìm thấy sự cố' });
+
+    const now = new Date().toISOString();
+    if (req.body.severity !== undefined) {
+      if (!INCIDENT_SEVERITIES.includes(req.body.severity)) return res.status(400).json({ error: 'Mức độ không hợp lệ' });
+      inc.severity = req.body.severity;
+    }
+    if (req.body.category !== undefined) {
+      if (!INCIDENT_CATEGORIES.includes(req.body.category)) return res.status(400).json({ error: 'Phân loại không hợp lệ' });
+      inc.category = req.body.category;
+    }
+    if (req.body.title       !== undefined) inc.title       = String(req.body.title).trim() || inc.title;
+    if (req.body.description !== undefined) inc.description = String(req.body.description).trim() || inc.description;
+    if (req.body.action      !== undefined) inc.action      = String(req.body.action).trim();
+    if (req.body.status !== undefined) {
+      if (!['OPEN', 'RESOLVED'].includes(req.body.status)) return res.status(400).json({ error: 'Trạng thái phải OPEN hoặc RESOLVED' });
+      inc.status = req.body.status;
+      if (inc.status === 'RESOLVED') { inc.resolvedAt = now; inc.resolvedBy = req.user.username; }
+      else { inc.resolvedAt = null; inc.resolvedBy = null; }
+    }
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { incidents, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'INCIDENT_UPDATED', bookingId: req.params.id,
+      to: `${inc.title}|${inc.status}`, by: req.user.username, at: now });
+    res.json({ message: 'Đã cập nhật sự cố', incident: inc });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id/incidents/:incId', requireAuth, async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    const inc = (booking.incidents || []).find(x => x.incId === req.params.incId);
+    if (!inc) return res.status(404).json({ error: 'Không tìm thấy sự cố' });
+    const canDelete = ['CEO', 'TPDH'].includes(req.user.role) || inc.by === req.user.username;
+    if (!canDelete) return res.status(403).json({ error: 'Chỉ người ghi hoặc CEO/TPDH được xoá sự cố' });
+    const incidents = booking.incidents.filter(x => x.incId !== req.params.incId);
+    await dbAsync.update('bookings', { bookingId: req.params.id },
+      { $set: { incidents, updatedAt: new Date().toISOString() } });
+    res.json({ message: 'Đã xoá sự cố' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

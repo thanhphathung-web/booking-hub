@@ -44,6 +44,7 @@ async function createBooking(body, createdBy) {
     itinerary: { days: [] },   // chương trình tour ngày-by-ngày + suất ăn + nơi nghỉ
     rooming: { rooms: [] },    // rooming list — phân phòng khách
     expenses: [],       // sổ chi phí thực tế
+    incidents: [],      // sổ sự cố (OP-09) — mức độ/phân loại/biện pháp/trạng thái
     dailyReports: [],   // Daily Tour Report
     productId,          // sản phẩm gốc (nếu tạo từ catalog)
     costEstimate,       // dự toán chi snapshot từ Cost Sheet

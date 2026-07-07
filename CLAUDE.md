@@ -147,6 +147,13 @@ booking-hub/
     done, doneBy, doneName, doneAt, note
   }],
   expenses: [{ expId, category, desc, amount, hasReceipt, by, name, at }],  // sổ chi thực tế
+  incidents: [{            // sổ sự cố (OP-09): biên bản có cấu trúc + trạng thái xử lý
+    incId, severity,       // LOW|MEDIUM|HIGH|CRITICAL
+    category,              // HEALTH|ACCIDENT|SUPPLIER|WEATHER|CUSTOMER|LOGISTICS|OTHER
+    title, description, action, occurredAt,
+    status,               // OPEN → RESOLVED
+    resolvedAt, resolvedBy, by, name, at
+  }],
   dailyReports: [{ date, summary, groupStatus, incidents, supplierRating, by, name, at }],
   createdAt: ISOString,
   updatedAt: ISOString,
@@ -176,7 +183,8 @@ GET  /api/auth/me          header: Bearer token → {user}
 GET    /api/bookings             query: ?status=&type=&search=
 GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent,
                                     dueSoonUnpaid (tour KH trong 3 ngày chưa thu đủ — card đỏ trên dashboard),
-                                    unconfirmedSoon (tour KH trong 7 ngày còn dịch vụ NCC chưa xác nhận — card 🤝)}
+                                    unconfirmedSoon (tour KH trong 7 ngày còn dịch vụ NCC chưa xác nhận — card 🤝),
+                                    openIncidents (sự cố còn mở trên tour chưa đóng — card đỏ 🚨)}
 GET    /api/bookings/:id
 POST   /api/bookings             body: booking object
 PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs/wellness (bookings:update;
@@ -205,6 +213,11 @@ PUT    /api/bookings/:id/itinerary           body: {days:[{title,activities:[{ti
 PUT    /api/bookings/:id/rooming             body: {rooms:[{roomType,roomNo,guests:[],note}]} — thay toàn bộ rooming list
                                              UI: card "Chương trình tour" + "Rooming list" trên detail (editor modal),
                                              nút 🖨 In chương trình (bản khách), và nhúng vào Tour File in ra.
+POST   /api/bookings/:id/incidents           body: {severity, category, title*, description*, action?, occurredAt?} (requireAuth)
+PATCH  /api/bookings/:id/incidents/:incId     body: {status?, action?, ...} — status=RESOLVED tự ghi resolvedBy/At
+DELETE /api/bookings/:id/incidents/:incId     người ghi hoặc CEO/TPDH
+                                             UI: card "Sổ sự cố" (hiện từ CONFIRMED) + modal ghi/sửa + nút 🆘 Thẻ SOS
+                                             (in liên hệ khẩn 113/114/115 + NVDH + LH khẩn từng khách + cảnh báo y tế).
 GET    /api/bookings/:id/readiness → {readiness} Go/No-Go: {verdict: GO|NO_GO, score, passedCount, total,
                                    checks[{key,label,severity:critical|warn,pass,detail}], blocking[], warnings[]}
                                    Pure logic: src/services/readiness.js (dùng chung route + smoke test).
@@ -462,6 +475,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Cổng Go/No-Go: bảng chấm sẵn sàng khởi hành (bắt buộc + cảnh báo), chặn "tour chạy mù" khi chuyển IN_PROGRESS
 - [x] Đặt dịch vụ NCC + trạng thái xác nhận giữ chỗ (REQUESTED→CONFIRMED + voucher), nuôi Go/No-Go + card dashboard "NCC chưa xác nhận"
 - [x] Chương trình tour ngày-by-ngày (mốc giờ + suất ăn + nơi nghỉ) + rooming list; in bản khách + nhúng Tour File; nuôi Go/No-Go (cảnh báo)
+- [x] Sổ sự cố có cấu trúc (mức độ/phân loại/biện pháp/OPEN→RESOLVED) + card dashboard "Sự cố đang mở" + Thẻ SOS in cho NVDH
 
 ## Tính năng chưa có (backlog)
 
