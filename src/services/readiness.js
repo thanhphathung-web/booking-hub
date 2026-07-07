@@ -86,6 +86,10 @@ function assessReadiness(b) {
         : `${svcs.length} dịch vụ đã xác nhận`);
   }
 
+  const itinDays = b.itinerary?.days?.length || 0;
+  add('itinerary', 'Chương trình tour đã lập', 'warn', itinDays > 0,
+    itinDays > 0 ? `${itinDays} ngày` : 'Chưa lập lịch trình');
+
   const reconf = itemDone(b, 'PO-16') && itemDone(b, 'PO-17');
   add('reconfirm', 'Re-confirm xe + KS 24h (PO-16/17)', 'warn', reconf,
     reconf ? 'Đã re-confirm cận giờ' : 'Chưa re-confirm cận giờ');

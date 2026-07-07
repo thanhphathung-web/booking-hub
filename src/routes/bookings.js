@@ -713,6 +713,62 @@ router.delete('/:id/services/:svcId', ...requirePerm('bookings:update'), async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Chương trình tour (itinerary) + rooming list ──────────
+// Lịch trình ngày-by-ngày + suất ăn + nơi nghỉ; nuôi Tour File, Pre-trip package, manifest.
+// Dùng PUT thay toàn bộ (editor gửi cả state) — đơn giản & chắc với NeDB.
+function sanitizeItinerary(body) {
+  const days = Array.isArray(body.days) ? body.days : [];
+  return days.slice(0, 60).map((d, i) => ({
+    day: i + 1,
+    title: String(d.title || '').trim().slice(0, 200),
+    activities: (Array.isArray(d.activities) ? d.activities : []).slice(0, 60).map(a => ({
+      time: String(a.time || '').trim().slice(0, 20),
+      desc: String(a.desc || '').trim().slice(0, 500),
+    })).filter(a => a.time || a.desc),
+    meals: { B: !!(d.meals && d.meals.B), L: !!(d.meals && d.meals.L), D: !!(d.meals && d.meals.D) },
+    hotel: String(d.hotel || '').trim().slice(0, 200),
+    note: String(d.note || '').trim().slice(0, 500),
+  }));
+}
+
+function sanitizeRooming(body) {
+  const rooms = Array.isArray(body.rooms) ? body.rooms : [];
+  return rooms.slice(0, 60).map(r => ({
+    roomType: String(r.roomType || '').trim().slice(0, 60),
+    roomNo: String(r.roomNo || '').trim().slice(0, 30),
+    guests: (Array.isArray(r.guests) ? r.guests : []).slice(0, 12).map(g => String(g || '').trim()).filter(Boolean),
+    note: String(r.note || '').trim().slice(0, 200),
+  })).filter(r => r.roomType || r.roomNo || r.guests.length);
+}
+
+router.put('/:id/itinerary', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (booking.status === 'CANCELLED')
+      return res.status(409).json({ error: 'Booking đã huỷ — không sửa chương trình' });
+    const now = new Date().toISOString();
+    const itinerary = { days: sanitizeItinerary(req.body), updatedBy: req.user.username, updatedAt: now };
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { itinerary, updatedAt: now } });
+    await dbAsync.insert('activity', { type: 'ITINERARY_SAVED', bookingId: req.params.id,
+      to: `${itinerary.days.length} ngày`, by: req.user.username, at: now });
+    res.json({ message: 'Đã lưu chương trình tour', itinerary });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/:id/rooming', ...requirePerm('bookings:update'), async (req, res) => {
+  try {
+    const booking = await dbAsync.findOne('bookings', { bookingId: req.params.id });
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (booking.status === 'CANCELLED')
+      return res.status(409).json({ error: 'Booking đã huỷ — không sửa rooming' });
+    const now = new Date().toISOString();
+    const rooming = { rooms: sanitizeRooming(req.body), updatedBy: req.user.username, updatedAt: now };
+    await dbAsync.update('bookings', { bookingId: req.params.id }, { $set: { rooming, updatedAt: now } });
+    res.json({ message: 'Đã lưu rooming list', rooming });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/bookings/:id/readiness ───────────────────────
 // Go/No-Go: bảng chấm sẵn sàng khởi hành (BẮT BUỘC + cảnh báo)
 router.get('/:id/readiness', ...requirePerm('bookings:read'), async (req, res) => {

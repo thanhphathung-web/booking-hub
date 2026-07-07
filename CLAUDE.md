@@ -132,6 +132,13 @@ booking-hub/
     voucherNo,                        // số voucher/PO/mã xác nhận từ NCC (khi CONFIRMED)
     confirmedBy, confirmedName, confirmedAt, note, by, name, at
   }],                                 // lớp GIỮ CHỖ (khác expenses — chỉ theo dõi tiền/công nợ)
+  itinerary: {             // chương trình tour ngày-by-ngày (PUT thay toàn bộ)
+    days: [{ day, title, activities: [{ time, desc }], meals: { B, L, D }, hotel, note }],
+    updatedBy, updatedAt   // day tự đánh số 1..n; date hiển thị = tourDate + (day-1) tính ở client
+  },
+  rooming: {               // rooming list — phân phòng khách
+    rooms: [{ roomType, roomNo, guests: [tên khách], note }], updatedBy, updatedAt
+  },
   checklist: [{            // checklist SOP tour — sinh tự động theo status (src/db/tourChecklist.js)
     code,                  // BC-xx|PO-xx|OP-xx|PT-xx
     title, phase,          // BOOKING|PREOPS|OPS|POSTOPS
@@ -193,6 +200,11 @@ POST   /api/bookings/:id/services            body: {category, desc*, nccId?, not
 PATCH  /api/bookings/:id/services/:svcId     body: {status?, voucherNo?, desc?, category?, nccId?, note?}
                                              status=CONFIRMED tự ghi confirmedBy/At; chống lỗi "tưởng đã đặt"
 DELETE /api/bookings/:id/services/:svcId     xoá 1 dịch vụ (bookings:update)
+PUT    /api/bookings/:id/itinerary           body: {days:[{title,activities:[{time,desc}],meals:{B,L,D},hotel,note}]}
+                                             thay toàn bộ chương trình (bookings:update; chặn CANCELLED); day tự đánh số
+PUT    /api/bookings/:id/rooming             body: {rooms:[{roomType,roomNo,guests:[],note}]} — thay toàn bộ rooming list
+                                             UI: card "Chương trình tour" + "Rooming list" trên detail (editor modal),
+                                             nút 🖨 In chương trình (bản khách), và nhúng vào Tour File in ra.
 GET    /api/bookings/:id/readiness → {readiness} Go/No-Go: {verdict: GO|NO_GO, score, passedCount, total,
                                    checks[{key,label,severity:critical|warn,pass,detail}], blocking[], warnings[]}
                                    Pure logic: src/services/readiness.js (dùng chung route + smoke test).
@@ -449,6 +461,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Hồ sơ hành khách chi tiết (tên đúng giấy tờ, giấy tờ, y tế/dị ứng, liên hệ khẩn) → manifest in ra dùng thật
 - [x] Cổng Go/No-Go: bảng chấm sẵn sàng khởi hành (bắt buộc + cảnh báo), chặn "tour chạy mù" khi chuyển IN_PROGRESS
 - [x] Đặt dịch vụ NCC + trạng thái xác nhận giữ chỗ (REQUESTED→CONFIRMED + voucher), nuôi Go/No-Go + card dashboard "NCC chưa xác nhận"
+- [x] Chương trình tour ngày-by-ngày (mốc giờ + suất ăn + nơi nghỉ) + rooming list; in bản khách + nhúng Tour File; nuôi Go/No-Go (cảnh báo)
 
 ## Tính năng chưa có (backlog)
 

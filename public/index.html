@@ -889,6 +889,35 @@
   </div>
 </div>
 
+<div id="modalItin" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-2xl my-8">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h3 class="text-lg font-bold">🗺 Soạn chương trình tour</h3>
+      <button onclick="itinAddDay()" class="text-sm bg-blue-900 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">＋ Thêm ngày</button>
+    </div>
+    <div id="itin-days" class="space-y-3 max-h-[62vh] overflow-y-auto pr-1"></div>
+    <div class="mt-4 flex gap-3">
+      <button onclick="itinSave()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">💾 Lưu chương trình</button>
+      <button onclick="closeModal('modalItin')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalRooming" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg my-8">
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <h3 class="text-lg font-bold">🛏 Phân phòng (Rooming list)</h3>
+      <button onclick="roomAdd()" class="text-sm bg-purple-700 text-white px-3 py-1.5 rounded-lg hover:bg-purple-600">＋ Thêm phòng</button>
+    </div>
+    <p id="room-pax-hint" class="text-xs text-gray-400 mb-3"></p>
+    <div id="room-rows" class="space-y-3 max-h-[60vh] overflow-y-auto pr-1"></div>
+    <div class="mt-4 flex gap-3">
+      <button onclick="roomSave()" class="bg-purple-700 text-white px-5 py-2 rounded-lg font-semibold hover:bg-purple-600">💾 Lưu rooming</button>
+      <button onclick="closeModal('modalRooming')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalSvcConfirm" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
     <h3 class="text-lg font-bold mb-1">✅ Xác nhận dịch vụ NCC</h3>
@@ -1807,6 +1836,8 @@ async function showDetail(id) {
           ${renderTourChecklist(b)}
           ${renderPassengers(b)}
           ${renderServices(b)}
+          ${renderItinerary(b)}
+          ${renderRooming(b)}
           ${renderDailyReports(b)}
 
           <!-- Assign with dropdowns -->
@@ -2708,6 +2739,25 @@ function printTourDossier(bookingId) {
   </div>
   ${b.specialReqs ? `<div class="alert">⚠ Yêu cầu đặc biệt: <strong>${b.specialReqs}</strong></div>` : ''}
   ${b.type==='WELLNESS' ? `<div class="alert">💜 WELLNESS — Gói khám: ${b.wellness?.package||''} · NCC: ${b.wellness?.ncc||''}</div>` : ''}
+  ${(() => {
+    const days = b.itinerary?.days || [];
+    if (!days.length) return '';
+    return `<h2>🗺 Chương trình tour</h2>` + days.map(d => {
+      const date = b.tourDate ? ymdAdd(b.tourDate, d.day - 1) : '';
+      const meals = ['B','L','D'].filter(k => d.meals && d.meals[k]).map(k => MEAL_LABEL[k]).join(', ');
+      const acts = (d.activities || []).map(a => `<tr><td style="width:60px;color:#888;font-family:monospace;vertical-align:top;padding:1px 6px 1px 0">${esc(a.time)||''}</td><td style="padding:1px 0">${esc(a.desc)}</td></tr>`).join('');
+      return `<div style="margin-bottom:8px;page-break-inside:avoid"><strong style="color:#1e3a5f">Ngày ${d.day}${date?' · '+date:''}${d.title?' — '+esc(d.title):''}</strong>
+        ${acts?`<table style="width:100%;border-collapse:collapse;font-size:9pt;margin:2px 0">${acts}</table>`:''}
+        <div style="font-size:8pt;color:#666">${meals?'🍽 '+meals:''}${d.hotel?' · 🏨 '+esc(d.hotel):''}${d.note?' · '+esc(d.note):''}</div></div>`;
+    }).join('');
+  })()}
+  ${(() => {
+    const rooms = b.rooming?.rooms || [];
+    if (!rooms.length) return '';
+    return `<h2>🛏 Rooming list</h2><table style="width:100%;border-collapse:collapse;font-size:9pt">
+      ${rooms.map(r => `<tr style="border-bottom:1px solid #eee"><td style="width:120px;padding:3px 4px;font-weight:bold">${esc(r.roomType)||'Phòng'}${r.roomNo?' '+esc(r.roomNo):''}</td><td style="padding:3px 4px">${(r.guests||[]).map(esc).join(', ')}${r.note?' <span style="color:#888">('+esc(r.note)+')</span>':''}</td></tr>`).join('')}
+    </table>`;
+  })()}
   <h2>✅ Checklist điều hành</h2>
   ${clHtml || '<p style="color:#aaa">Chưa có checklist</p>'}
   <p style="margin-top:20px;font-size:8pt;color:#aaa;border-top:1px solid #eee;padding-top:8px">
@@ -2988,6 +3038,189 @@ async function submitSvcConfirm() {
       body: JSON.stringify({ status:'CONFIRMED', voucherNo, note }) });
     toast('✅ Đã xác nhận dịch vụ');
     showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Chương trình tour (itinerary) ─────────────────────────
+function ymdAdd(ymd, n) { const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const MEAL_LABEL = { B:'Sáng', L:'Trưa', D:'Tối' };
+
+function renderItinerary(b) {
+  if (b.status === 'CANCELLED') return '';
+  const days = b.itinerary?.days || [];
+  const editable = canEditPax(b);
+  const body = days.length ? days.map(d => {
+    const date = b.tourDate ? ymdAdd(b.tourDate, d.day - 1) : '';
+    const meals = ['B','L','D'].filter(k => d.meals && d.meals[k]).map(k => MEAL_LABEL[k]).join(', ');
+    const acts = (d.activities || []).map(a => `<div class="flex gap-2 text-sm"><span class="text-gray-400 font-mono w-12 flex-shrink-0">${esc(a.time) || ''}</span><span class="text-gray-700">${esc(a.desc)}</span></div>`).join('');
+    return `<div class="border-l-2 border-blue-200 pl-3 py-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs font-bold bg-blue-900 text-white rounded-full px-2 py-0.5">Ngày ${d.day}</span>
+        ${date ? `<span class="text-xs text-gray-400">${date}</span>` : ''}
+        <span class="font-semibold text-sm text-gray-800">${esc(d.title) || ''}</span>
+      </div>
+      ${acts ? `<div class="mt-1 space-y-0.5">${acts}</div>` : ''}
+      <div class="mt-1 flex gap-3 flex-wrap text-xs text-gray-500">
+        ${meals ? `<span>🍽 ${meals}</span>` : ''}
+        ${d.hotel ? `<span>🏨 ${esc(d.hotel)}</span>` : ''}
+      </div>
+      ${d.note ? `<p class="text-xs text-gray-400 mt-0.5 italic">${esc(d.note)}</p>` : ''}
+    </div>`;
+  }).join('') : '<p class="text-gray-400 text-sm">Chưa lập chương trình tour</p>';
+  return `<div class="bg-white rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h4 class="font-semibold text-gray-700">🗺 Chương trình tour${days.length ? ` · ${days.length} ngày` : ''}</h4>
+      <div class="flex gap-2">
+        ${days.length ? `<button onclick="printItinerary('${b.bookingId}')" class="text-xs border border-gray-300 px-3 py-1 rounded-lg hover:bg-gray-50">🖨 In</button>` : ''}
+        ${editable ? `<button onclick="openItinEditor()" class="text-xs bg-blue-900 text-white px-3 py-1 rounded-lg hover:bg-blue-800">✏️ Soạn lịch trình</button>` : ''}
+      </div>
+    </div>
+    <div class="space-y-2">${body}</div>
+  </div>`;
+}
+
+let ITIN_DRAFT = [];
+function itinBlankDay() { return { title:'', hotel:'', note:'', meals:{ B:false, L:false, D:false }, activities:[] }; }
+function openItinEditor() {
+  const b = window._curBooking;
+  ITIN_DRAFT = JSON.parse(JSON.stringify(b.itinerary?.days || []));
+  if (!ITIN_DRAFT.length) ITIN_DRAFT.push(itinBlankDay());
+  itinRenderEditor();
+  document.getElementById('modalItin').classList.remove('hidden');
+}
+function itinRenderEditor() {
+  const b = window._curBooking;
+  document.getElementById('itin-days').innerHTML = ITIN_DRAFT.map((d, i) => {
+    const date = b.tourDate ? ymdAdd(b.tourDate, i) : '';
+    const acts = (d.activities || []).map((a, j) => `<div class="flex gap-2 mb-1" data-act="${j}">
+      <input class="input text-sm w-24" data-af="time" value="${esc(a.time || '')}" placeholder="08:00"/>
+      <input class="input text-sm flex-1" data-af="desc" value="${esc(a.desc || '')}" placeholder="Hoạt động"/>
+      <button onclick="itinDelAct(${i},${j})" class="text-red-400 px-2 flex-shrink-0">✕</button>
+    </div>`).join('');
+    return `<div class="border rounded-lg p-3 bg-gray-50" data-day="${i}">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-bold text-blue-900">Ngày ${i + 1}${date ? ` · ${date}` : ''}</span>
+        <button onclick="itinDelDay(${i})" class="text-xs text-red-500 hover:underline">xoá ngày</button>
+      </div>
+      <input class="input text-sm mb-2 w-full" data-df="title" value="${esc(d.title || '')}" placeholder="Tiêu đề ngày (vd: Hà Nội – Sapa)"/>
+      <div class="mb-1">${acts}</div>
+      <button onclick="itinAddAct(${i})" class="text-xs text-blue-700 hover:underline mb-2">＋ thêm mốc giờ</button>
+      <div class="flex gap-3 items-center flex-wrap mb-2">
+        <label class="text-xs flex items-center gap-1"><input type="checkbox" data-mf="B" ${d.meals?.B ? 'checked' : ''}/> Sáng</label>
+        <label class="text-xs flex items-center gap-1"><input type="checkbox" data-mf="L" ${d.meals?.L ? 'checked' : ''}/> Trưa</label>
+        <label class="text-xs flex items-center gap-1"><input type="checkbox" data-mf="D" ${d.meals?.D ? 'checked' : ''}/> Tối</label>
+        <input class="input text-sm flex-1 min-w-32" data-df="hotel" value="${esc(d.hotel || '')}" placeholder="🏨 Nơi nghỉ đêm"/>
+      </div>
+      <input class="input text-sm w-full" data-df="note" value="${esc(d.note || '')}" placeholder="Ghi chú ngày"/>
+    </div>`;
+  }).join('');
+}
+function itinSync() {
+  ITIN_DRAFT = [...document.querySelectorAll('#itin-days > [data-day]')].map(bl => {
+    const g = f => bl.querySelector(`[data-df="${f}"]`)?.value || '';
+    const meals = {}; ['B','L','D'].forEach(k => meals[k] = bl.querySelector(`[data-mf="${k}"]`)?.checked || false);
+    const activities = [...bl.querySelectorAll('[data-act]')].map(ar => ({
+      time: ar.querySelector('[data-af="time"]')?.value || '',
+      desc: ar.querySelector('[data-af="desc"]')?.value || '',
+    }));
+    return { title:g('title'), hotel:g('hotel'), note:g('note'), meals, activities };
+  });
+}
+function itinAddDay() { itinSync(); ITIN_DRAFT.push(itinBlankDay()); itinRenderEditor(); }
+function itinDelDay(i) { itinSync(); ITIN_DRAFT.splice(i, 1); if (!ITIN_DRAFT.length) ITIN_DRAFT.push(itinBlankDay()); itinRenderEditor(); }
+function itinAddAct(i) { itinSync(); (ITIN_DRAFT[i].activities = ITIN_DRAFT[i].activities || []).push({ time:'', desc:'' }); itinRenderEditor(); }
+function itinDelAct(i, j) { itinSync(); ITIN_DRAFT[i].activities.splice(j, 1); itinRenderEditor(); }
+async function itinSave() {
+  itinSync();
+  const b = window._curBooking;
+  try {
+    await api(`/bookings/${b.bookingId}/itinerary`, { method:'PUT', body: JSON.stringify({ days: ITIN_DRAFT }) });
+    closeModal('modalItin'); toast('Đã lưu chương trình tour'); showDetail(b.bookingId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function printItinerary(bookingId) {
+  const b = window._curBooking;
+  if (!b || b.bookingId !== bookingId) { toast('Không tìm thấy dữ liệu', 'error'); return; }
+  const days = b.itinerary?.days || [];
+  const daysHtml = days.map(d => {
+    const date = b.tourDate ? ymdAdd(b.tourDate, d.day - 1) : '';
+    const meals = ['B','L','D'].filter(k => d.meals && d.meals[k]).map(k => MEAL_LABEL[k]).join(', ');
+    const acts = (d.activities || []).map(a => `<tr><td style="width:70px;color:#888;font-family:monospace;vertical-align:top;padding:2px 8px 2px 0">${esc(a.time)||''}</td><td style="padding:2px 0">${esc(a.desc)}</td></tr>`).join('');
+    return `<div style="margin-bottom:16px;page-break-inside:avoid">
+      <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px;font-weight:bold">Ngày ${d.day}${date?' · '+date:''}${d.title?' — '+esc(d.title):''}</div>
+      ${acts?`<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:13px">${acts}</table>`:''}
+      <div style="font-size:12px;color:#555;margin-top:4px">${meals?'🍽 Bữa ăn: '+meals:''}${meals&&d.hotel?' &nbsp;|&nbsp; ':''}${d.hotel?'🏨 Nghỉ đêm: '+esc(d.hotel):''}</div>
+      ${d.note?`<div style="font-size:12px;color:#888;font-style:italic;margin-top:2px">${esc(d.note)}</div>`:''}
+    </div>`;
+  }).join('');
+  const w = window.open('', '_blank', 'width=900,height=700');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Chương trình tour — ${b.bookingId}</title>
+  <style>body{font-family:Arial,sans-serif;color:#222;padding:24px;max-width:760px;margin:0 auto}h1{font-size:20px;margin:0 0 4px}.sub{color:#666;font-size:13px;margin-bottom:16px}@media print{body{padding:0}.no-print{display:none}}</style>
+  </head><body>
+  <h1>🗺️ CHƯƠNG TRÌNH TOUR</h1>
+  <div class="sub"><strong>${esc(b.product)}</strong> · Khởi hành ${b.tourDate} · ${b.adults} người lớn${b.children>0?' + '+b.children+' trẻ em':''} · Mã ${b.bookingId}</div>
+  ${daysHtml || '<p style="color:#aaa">Chưa có nội dung</p>'}
+  <div class="no-print" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="background:#1e3a5f;color:#fff;border:none;padding:10px 32px;border-radius:8px;font-size:14px;cursor:pointer">🖨 In chương trình</button></div>
+  </body></html>`);
+  w.document.close();
+}
+
+// ── Rooming list ──────────────────────────────────────────
+function renderRooming(b) {
+  if (b.status === 'CANCELLED') return '';
+  const rooms = b.rooming?.rooms || [];
+  const editable = canEditPax(b);
+  const body = rooms.length ? rooms.map(r => `<div class="flex items-start gap-2 text-sm py-1.5 border-t border-gray-100 first:border-0">
+    <span class="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 flex-shrink-0 whitespace-nowrap">${esc(r.roomType) || 'Phòng'}${r.roomNo ? ' ' + esc(r.roomNo) : ''}</span>
+    <span class="flex-1 text-gray-700">${(r.guests || []).map(esc).join(', ') || '<span class="text-gray-300">chưa gán khách</span>'}${r.note ? ` · <span class="text-gray-400">${esc(r.note)}</span>` : ''}</span>
+  </div>`).join('') : '<p class="text-gray-400 text-sm">Chưa lập rooming list</p>';
+  return `<div class="bg-white rounded-xl shadow-sm p-6">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h4 class="font-semibold text-gray-700">🛏 Rooming list${rooms.length ? ` · ${rooms.length} phòng` : ''}</h4>
+      ${editable ? `<button onclick="openRoomEditor()" class="text-xs bg-purple-700 text-white px-3 py-1 rounded-lg hover:bg-purple-600">✏️ Phân phòng</button>` : ''}
+    </div>
+    <div>${body}</div>
+  </div>`;
+}
+
+let ROOM_DRAFT = [];
+function openRoomEditor() {
+  const b = window._curBooking;
+  ROOM_DRAFT = JSON.parse(JSON.stringify(b.rooming?.rooms || []));
+  if (!ROOM_DRAFT.length) ROOM_DRAFT.push({ roomType:'', roomNo:'', guests:[], note:'' });
+  roomRenderEditor();
+  document.getElementById('modalRooming').classList.remove('hidden');
+}
+function roomRenderEditor() {
+  const b = window._curBooking;
+  const paxNames = (b.passengers || []).map(p => p.fullName).filter(Boolean);
+  document.getElementById('room-pax-hint').textContent = paxNames.length ? ('Khách trong đơn: ' + paxNames.join(', ')) : '';
+  document.getElementById('room-rows').innerHTML = ROOM_DRAFT.map((r, i) => `<div class="border rounded-lg p-3 bg-gray-50" data-room="${i}">
+    <div class="flex gap-2 mb-2">
+      <input class="input text-sm flex-1" data-rf="roomType" value="${esc(r.roomType || '')}" placeholder="Loại phòng (vd: Đôi, 3 người)"/>
+      <input class="input text-sm w-24" data-rf="roomNo" value="${esc(r.roomNo || '')}" placeholder="Số phòng"/>
+      <button onclick="roomDel(${i})" class="text-red-400 px-2 flex-shrink-0">✕</button>
+    </div>
+    <input class="input text-sm mb-2 w-full" data-rf="guests" value="${esc((r.guests || []).join(', '))}" placeholder="Tên khách trong phòng (cách nhau dấu phẩy)"/>
+    <input class="input text-sm w-full" data-rf="note" value="${esc(r.note || '')}" placeholder="Ghi chú (view, tầng, giường phụ...)"/>
+  </div>`).join('');
+}
+function roomSync() {
+  ROOM_DRAFT = [...document.querySelectorAll('#room-rows > [data-room]')].map(bl => {
+    const g = f => bl.querySelector(`[data-rf="${f}"]`)?.value || '';
+    return { roomType:g('roomType'), roomNo:g('roomNo'),
+      guests: g('guests').split(',').map(s => s.trim()).filter(Boolean), note:g('note') };
+  });
+}
+function roomAdd() { roomSync(); ROOM_DRAFT.push({ roomType:'', roomNo:'', guests:[], note:'' }); roomRenderEditor(); }
+function roomDel(i) { roomSync(); ROOM_DRAFT.splice(i, 1); if (!ROOM_DRAFT.length) ROOM_DRAFT.push({ roomType:'', roomNo:'', guests:[], note:'' }); roomRenderEditor(); }
+async function roomSave() {
+  roomSync();
+  const b = window._curBooking;
+  try {
+    await api(`/bookings/${b.bookingId}/rooming`, { method:'PUT', body: JSON.stringify({ rooms: ROOM_DRAFT }) });
+    closeModal('modalRooming'); toast('Đã lưu rooming list'); showDetail(b.bookingId);
   } catch(e) { toast(e.message, 'error'); }
 }
 

@@ -306,9 +306,11 @@ async function login(username, password) {
       check('đủ điều kiện bắt buộc → GO (dù cảnh báo còn)', r.data?.readiness?.verdict === 'GO', JSON.stringify(r.data?.readiness?.blocking));
       check('còn cảnh báo reconfirm chưa xong → score < 100', r.data?.readiness?.score < 100 && r.data?.readiness?.score >= 80, String(r.data?.readiness?.score));
 
-      // Tick nốt mục cảnh báo → 100%
+      // Tick nốt mục cảnh báo (reconfirm) + lập chương trình tour → 100%
       for (const code of ['PO-16','PO-17'])
         await req('PATCH', `/api/bookings/${rid}/checklist/${code}`, { token: ceo, body: { done: true } });
+      await req('PUT', `/api/bookings/${rid}/itinerary`, { token: ceo, body: {
+        days: [{ title: 'Ngày 1', activities: [{ time: '07:00', desc: 'Khởi hành' }] }] } });
       r = await req('GET', `/api/bookings/${rid}/readiness`, { token: ceo });
       check('xong cả cảnh báo → score = 100', r.data?.readiness?.score === 100, String(r.data?.readiness?.score));
 
@@ -369,6 +371,45 @@ async function login(username, password) {
       await req('POST', `/api/bookings/${soonId}/services`, { token: nvdh, body: { category: 'XE', desc: 'Xe đón' } });
       r = await req('GET', '/api/bookings/stats', { token: ceo });
       check('stats.unconfirmedSoon đếm tour cận ngày còn NCC chưa xác nhận', r.data.unconfirmedSoon >= 1, String(r.data.unconfirmedSoon));
+    }
+
+    console.log('\n— Chương trình tour + rooming —');
+    {
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Itinerary 3N2Đ', tourDate: '2030-11-01', adults: 2,
+        customer: { name: 'Khach Itin', phone: '0900000051' } } });
+      const iid = r.data.booking.bookingId;
+      check('booking mới có itinerary/rooming rỗng',
+        Array.isArray(r.data.booking.itinerary?.days) && Array.isArray(r.data.booking.rooming?.rooms));
+
+      r = await req('PUT', `/api/bookings/${iid}/itinerary`, { token: cs, body: { days: [] } });
+      check('CS (không có bookings:update) soạn lịch trình → 403', r.status === 403);
+
+      r = await req('PUT', `/api/bookings/${iid}/itinerary`, { token: nvdh, body: { days: [
+        { title: 'Hà Nội – Sapa', hotel: 'KS A', meals: { B: false, L: true, D: true },
+          activities: [{ time: '06:00', desc: 'Đón khách' }, { time: '', desc: '' }] },
+        { title: 'Sapa – Fansipan', meals: { B: true }, activities: [{ time: '08:00', desc: 'Cáp treo' }] },
+      ] } });
+      check('NVDH lưu lịch trình 2 ngày → 200', r.status === 200 && r.data.itinerary.days.length === 2);
+      check('day tự đánh số + lọc activity rỗng',
+        r.data.itinerary.days[0].day === 1 && r.data.itinerary.days[0].activities.length === 1
+        && r.data.itinerary.days[1].day === 2);
+      check('meals booleans đúng', r.data.itinerary.days[0].meals.L === true && r.data.itinerary.days[0].meals.B === false);
+
+      r = await req('GET', `/api/bookings/${iid}/readiness`, { token: ceo });
+      check('readiness: có chương trình → check itinerary pass (warn)',
+        r.data.readiness.checks.find(c => c.key === 'itinerary')?.pass === true);
+
+      r = await req('PUT', `/api/bookings/${iid}/rooming`, { token: nvdh, body: { rooms: [
+        { roomType: 'Đôi', roomNo: '201', guests: ['Nguyen A', 'Tran B'], note: 'view núi' },
+        { roomType: '', roomNo: '', guests: [], note: '' },
+      ] } });
+      check('lưu rooming, lọc phòng rỗng → 1 phòng',
+        r.status === 200 && r.data.rooming.rooms.length === 1 && r.data.rooming.rooms[0].guests.length === 2);
+
+      await req('PATCH', `/api/bookings/${iid}/status`, { token: ceo, body: { status: 'CANCELLED' } });
+      r = await req('PUT', `/api/bookings/${iid}/itinerary`, { token: nvdh, body: { days: [] } });
+      check('booking CANCELLED không sửa lịch trình → 409', r.status === 409);
     }
 
     console.log('\n— Backup —');
