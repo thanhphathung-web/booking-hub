@@ -53,3 +53,10 @@ db.suppliers = new Datastore({ filename: path.join(DATA_DIR, 'suppliers.db'), au
 
 // ── CRM: ghi chú chăm sóc khách (hồ sơ khách tính từ bookings, không lưu trùng) ──
 db.customers = new Datastore({ filename: path.join(DATA_DIR, 'customers.db'), autoload: true });
+
+// ── Lịch khởi hành (departures) — chuyến bán theo ngày + số chỗ, chống overbooking ──
+// seatsSold KHÔNG lưu ở đây — luôn tính từ bookings gắn departureId (status ≠ CANCELLED)
+db.departures = new Datastore({ filename: path.join(DATA_DIR, 'departures.db'), autoload: true });
+
+// ── Đánh giá / NPS sau tour (khách gửi qua trang công khai /danhgia) ──
+db.reviews = new Datastore({ filename: path.join(DATA_DIR, 'reviews.db'), autoload: true });

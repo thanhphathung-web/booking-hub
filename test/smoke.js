@@ -499,6 +499,97 @@ async function login(username, password) {
       check('nhắc T-3 lấy điểm hẹn từ itinerary', /06:30 — Đón tại KS Rex/.test(r.data.text || ''));
     }
 
+    console.log('\n— Lịch khởi hành + số chỗ (inventory) —');
+    {
+      r = await req('POST', '/api/products', { token: ceo, body: { name: 'Tour Dep SP', defaultPrice: 2000000 } });
+      const depPrd = r.data.product.productId;
+      r = await req('POST', '/api/departures', { token: ceo, body: { productId: 'PRD-KHONGCO', date: '2031-08-01', seatsTotal: 10 } });
+      check('tạo chuyến với sản phẩm không tồn tại → 400', r.status === 400);
+      r = await req('POST', '/api/departures', { token: ceo, body: { productId: depPrd, date: 'sai', seatsTotal: 10 } });
+      check('ngày sai định dạng → 400', r.status === 400);
+      r = await req('POST', '/api/departures', { token: nvdh, body: { productId: depPrd, date: '2031-08-01', seatsTotal: 10 } });
+      check('NVDH (không products:manage) tạo chuyến → 403', r.status === 403);
+      r = await req('POST', '/api/departures', { token: ceo, body: { productId: depPrd, date: '2031-08-01', seatsTotal: 4, price: 2500000 } });
+      check('CEO tạo chuyến 4 chỗ → 201, seatsLeft = 4', r.status === 201 && r.data.departure.seatsLeft === 4, JSON.stringify(r.data.departure));
+      const depId = r.data.departure.departureId;
+
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        departureId: depId, adults: 2, customer: { name: 'Khach Dep', phone: '0900000101' } } });
+      check('đặt theo chuyến (2 khách) → 201, gắn departureId + ngày/giá từ chuyến', r.status === 201
+        && r.data.booking.departureId === depId && r.data.booking.tourDate === '2031-08-01'
+        && r.data.booking.payment.amount === 5000000, JSON.stringify(r.data.booking?.payment));
+      const depBk = r.data.booking.bookingId;
+      r = await req('GET', `/api/departures/${depId}`, { token: nvdh });
+      check('chuyến đã bán 2 chỗ, còn 2', r.data.departure.seatsSold === 2 && r.data.departure.seatsLeft === 2);
+
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        departureId: depId, adults: 3, customer: { name: 'Qua Tai', phone: '0900000102' } } });
+      check('đặt 3 khách khi chỉ còn 2 chỗ → 409 (chống overbooking)', r.status === 409, JSON.stringify(r.data));
+      r = await req('PATCH', `/api/departures/${depId}`, { token: ceo, body: { seatsTotal: 1 } });
+      check('giảm tổng chỗ xuống dưới số đã bán → 409', r.status === 409);
+
+      // Huỷ booking → tự trả chỗ (seatsSold tính lại, bỏ CANCELLED)
+      await req('POST', `/api/bookings/${depBk}/cancel-request`, { token: nvdh, body: { reason: 'khách đổi ý' } });
+      await req('POST', `/api/bookings/${depBk}/cancel-approve`, { token: ceo });
+      r = await req('GET', `/api/departures/${depId}`, { token: ceo });
+      check('huỷ booking tự trả chỗ → seatsSold về 0', r.data.departure.seatsSold === 0, String(r.data.departure.seatsSold));
+      r = await req('DELETE', `/api/departures/${depId}`, { token: ceo });
+      check('xoá chuyến còn booking (kể cả đã huỷ) → 409', r.status === 409);
+    }
+
+    console.log('\n— Đánh giá / NPS sau tour —');
+    {
+      // bid là booking COMPLETED (phone 0900000001) — dùng để đánh giá
+      r = await req('POST', '/api/reviews', { body: { bookingId: bid, phone: '0999999999', stars: 5 } });
+      check('đánh giá sai SĐT → 404', r.status === 404);
+      r = await req('POST', '/api/reviews', { body: { bookingId: bid, phone: '0900000001', stars: 9 } });
+      check('số sao ngoài 1-5 → 400', r.status === 400);
+      r = await req('POST', '/api/reviews', { body: { bookingId: bid, phone: '0900 000 001', stars: 5, nps: 10, comment: 'Tuyệt vời' } });
+      check('khách gửi đánh giá 5★ (SĐT khác định dạng) → 201', r.status === 201, JSON.stringify(r.data));
+      r = await req('POST', '/api/reviews', { body: { bookingId: bid, phone: '0900000001', stars: 4 } });
+      check('đánh giá lại đơn đã đánh giá → 409', r.status === 409);
+
+      // Booking chưa hoàn thành không được đánh giá
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Chua Xong', tourDate: '2031-09-09', adults: 1, customer: { name: 'K', phone: '0900000111' } } });
+      const newBk = r.data.booking.bookingId;
+      r = await req('POST', '/api/reviews', { body: { bookingId: newBk, phone: '0900000111', stars: 5 } });
+      check('đánh giá tour chưa COMPLETED → 409', r.status === 409);
+
+      r = await req('GET', '/api/reviews', { token: nvdh });
+      check('nội bộ xem danh sách + stats', Array.isArray(r.data.reviews) && r.data.stats.avgStars === 5);
+      const revId = r.data.reviews.find(x => x.bookingId === bid).reviewId;
+      r = await req('GET', '/api/reviews/public');
+      check('review chưa duyệt không hiện công khai', r.data.reviews.length === 0);
+      r = await req('PATCH', `/api/reviews/${revId}`, { token: nvdh, body: { published: true } });
+      check('NVDH duyệt review → 403', r.status === 403);
+      r = await req('PATCH', `/api/reviews/${revId}`, { token: ceo, body: { published: true, reply: 'Cảm ơn bạn!' } });
+      check('CEO duyệt + trả lời → 200', r.status === 200 && r.data.review.published === true);
+      r = await req('GET', '/api/reviews/public');
+      check('review đã duyệt hiện công khai, che tên khách, có reply', r.data.reviews.length === 1
+        && !r.data.reviews[0].phone && !!r.data.reviews[0].reply, JSON.stringify(r.data.reviews[0]));
+
+      // Đánh giá tệ → cần follow-up + ghi note vào booking (dùng booking COMPLETED thứ 2)
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Danh Gia Te', tourDate: '2031-03-03', adults: 1, customer: { name: 'K Te', phone: '0900000121' } } });
+      const teBk = r.data.booking.bookingId;
+      await req('PATCH', `/api/bookings/${teBk}/status`, { token: ceo, body: { status: 'CONFIRMED' } });
+      await req('PATCH', `/api/bookings/${teBk}/status`, { token: ceo, body: { status: 'IN_PROGRESS' } });
+      await req('PATCH', `/api/bookings/${teBk}/checklist/PT-08`, { token: ceo, body: { done: true } });
+      await req('PATCH', `/api/bookings/${teBk}/status`, { token: ceo, body: { status: 'COMPLETED' } });
+      r = await req('POST', '/api/reviews', { body: { bookingId: teBk, phone: '0900000121', stars: 1, comment: 'Xe trễ' } });
+      check('đánh giá 1★ → 201', r.status === 201);
+      r = await req('GET', '/api/reviews?negative=true', { token: ceo });
+      check('lọc đánh giá tệ cần chăm sóc', r.data.reviews.some(x => x.bookingId === teBk && x.followUp.needed));
+      r = await req('GET', `/api/bookings/${teBk}`, { token: ceo });
+      check('đánh giá tệ tự ghi note cảnh báo vào booking', (r.data.booking.notes || []).some(n => /Đánh giá thấp/.test(n.text)));
+      r = await req('GET', '/api/reviews/stats', { token: ceo });
+      check('stats tổng hợp có overall + byProduct + needFollowUp', typeof r.data.overall.avgStars === 'number'
+        && Array.isArray(r.data.byProduct) && r.data.needFollowUp >= 1);
+      r = await req('GET', '/danhgia');
+      check('trang /danhgia phục vụ được', r.status === 200);
+    }
+
     console.log('\n— Huỷ booking 2 người (maker-checker) —');
     {
       const tpdh = await login('tpdh', 'tpdh123');

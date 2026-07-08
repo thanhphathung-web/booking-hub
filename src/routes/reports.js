@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { dbAsync } = require('../db/database');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { collectedOf } = require('../services/payments');
+const { computeStats } = require('../services/reviews');
 
 // Post Analysis (giai đoạn 6): lãi/lỗ per tour, hiệu quả per sản phẩm, xếp hạng NCC
 // Chỉ tính tour COMPLETED — tour chưa xong chưa quyết toán được
@@ -57,10 +58,23 @@ router.get('/post-analysis', requireAuth, async (req, res) => {
       const g = byProductMap[key];
       g.tourCount++; g.pax += t.pax; g.revenue += t.revenue; g.cost += t.actual;
     }
-    const byProduct = Object.values(byProductMap).map(g => ({
-      ...g, profit: g.revenue - g.cost,
-      margin: g.revenue > 0 ? Math.round((g.revenue - g.cost) / g.revenue * 100) : null,
-    })).sort((a, b) => b.profit - a.profit);
+    // ── Đánh giá / NPS: gắn điểm hài lòng vào từng sản phẩm (chất lượng, không chỉ lãi/lỗ) ──
+    const allReviews = await dbAsync.find('reviews', {});
+    const reviewsByProduct = {};
+    for (const rv of allReviews) {
+      const key = rv.productId || rv.productName;
+      (reviewsByProduct[key] = reviewsByProduct[key] || []).push(rv);
+    }
+
+    const byProduct = Object.values(byProductMap).map(g => {
+      const key = g.productId || g.product;
+      const rvStats = computeStats(reviewsByProduct[key] || []);
+      return {
+        ...g, profit: g.revenue - g.cost,
+        margin: g.revenue > 0 ? Math.round((g.revenue - g.cost) / g.revenue * 100) : null,
+        avgStars: rvStats.avgStars, npsScore: rvStats.npsScore, reviewCount: rvStats.count,
+      };
+    }).sort((a, b) => b.profit - a.profit);
 
     // ── NCC ranking ───────────────────────────────────────
     const allSuppliers = await dbAsync.find('suppliers', {}, { name: 1 });
@@ -74,7 +88,7 @@ router.get('/post-analysis', requireAuth, async (req, res) => {
       }))
       .sort((a, b) => b.avgRating - a.avgRating);
 
-    res.json({ summary, tours, byProduct, suppliers });
+    res.json({ summary, tours, byProduct, suppliers, reviews: computeStats(allReviews) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

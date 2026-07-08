@@ -58,7 +58,8 @@ function buildThankYou(b) {
     `Xin chào ${b.customer.name},`, '',
     `Cảm ơn bạn đã tham gia tour "${b.product}" (${b.tourDate}).`,
     'Rất mong bạn đã có những trải nghiệm đáng nhớ!', '',
-    'Bạn vui lòng dành 1 phút đánh giá chất lượng tour (thang điểm 1–10) và góp ý để chúng tôi phục vụ tốt hơn.',
+    'Bạn vui lòng dành 1 phút đánh giá chất lượng tour (chọn sao + mức độ giới thiệu) để chúng tôi phục vụ tốt hơn:',
+    `👉 ${appUrl()}/danhgia?ma=${b.bookingId}`,
     'Phản hồi của bạn là món quà quý giá với chúng tôi.', '',
     'Hẹn gặp lại bạn trong những hành trình tiếp theo — ưu đãi đặc biệt dành cho khách quay lại!',
   ].join('\n');

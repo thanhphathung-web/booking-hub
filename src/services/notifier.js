@@ -59,7 +59,31 @@ function buildIncidentMsg(b, inc, reporterName) {
   return { subject, text };
 }
 
+function buildNegativeReviewMsg(b, review) {
+  const subject = `⭐ [Booking Hub] Đánh giá thấp (${review.stars}★): tour ${b.product}`;
+  const text = [
+    `Khách vừa gửi đánh giá thấp cần chăm sóc:`, '',
+    `• Tour: ${b.product} (${b.bookingId})`,
+    `• Khách: ${b.customer?.name || ''} — ${b.customer?.phone || ''}`,
+    `• Số sao: ${review.stars}★${review.nps != null ? ` · NPS ${review.nps}/10` : ''}`,
+    review.comment ? `• Góp ý: "${review.comment}"` : '',
+    '', `Mở Booking Hub để xử lý: ${appUrl()}`,
+  ].filter(x => x !== '').join('\n');
+  return { subject, text };
+}
+
 // ── Sự kiện ───────────────────────────────────────────────
+// Đánh giá tệ sau tour → báo quản lý (CEO + TPDH) để chăm sóc, đóng vòng dịch vụ
+async function notifyNegativeReview(booking, review) {
+  try {
+    const managers = await dbAsync.find('users', { active: true, role: { $in: ['CEO', 'TPDH'] } });
+    const { subject, text } = buildNegativeReviewMsg(booking, review);
+    const results = [];
+    for (const m of managers) results.push(await notifyUser(m, subject, text));
+    return results;
+  } catch (e) { return { error: e.message }; }
+}
+
 // Phân công NVDH/WC → báo người được phân công
 async function notifyAssignment(booking, username, byName, roleLabel) {
   try {
@@ -84,6 +108,6 @@ async function notifyIncident(booking, incident, reporterName) {
 }
 
 module.exports = {
-  channelStatus, notifyUser, notifyAssignment, notifyIncident,
-  buildAssignmentMsg, buildIncidentMsg,
+  channelStatus, notifyUser, notifyAssignment, notifyIncident, notifyNegativeReview,
+  buildAssignmentMsg, buildIncidentMsg, buildNegativeReviewMsg,
 };

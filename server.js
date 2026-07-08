@@ -41,6 +41,8 @@ app.use('/api/backup',     require('./src/routes/backup'));
 app.use('/api/customers',  require('./src/routes/customers'));
 app.use('/api/lookup',     require('./src/routes/lookup'));
 app.use('/api/notify',     require('./src/routes/notify'));
+app.use('/api/departures', require('./src/routes/departures'));
+app.use('/api/reviews',    require('./src/routes/reviews'));
 
 // Health check — dùng làm target cho uptime monitor ngoài (UptimeRobot...)
 const errorLog = require('./src/services/errorLog');
@@ -79,6 +81,10 @@ app.get('/tracuu', (req, res) =>
 
 app.get('/nvdh', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'nvdh.html')));
+
+// Trang khách gửi đánh giá / NPS sau tour (link trong email cảm ơn)
+app.get('/danhgia', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'danhgia.html')));
 
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>

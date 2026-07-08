@@ -368,6 +368,32 @@ DELETE /api/suppliers/:id        (CEO only)
 ```
 `suppliers.db`: `{ nccId (NCC-xxx), name, category (XE|KHACHSAN|ANUONG|VE|BAOHIEM|YTE|KHAC), phone, email, contact, address, notes, ratings: [{score, note, bookingId, by, name, at}], active }`.
 
+### Departures (Lịch khởi hành + số chỗ)
+```
+GET    /api/departures            ?productId= &active=true &upcoming=true (mọi role, kèm seatsSold/seatsLeft/full)
+GET    /api/departures/:id        → {departure (kèm số chỗ), bookings[]} (tóm tắt booking gắn chuyến)
+POST   /api/departures            (CEO/PM — products:manage) body: {productId*, date*, seatsTotal*, price?, note?}
+PATCH  /api/departures/:id        (CEO/PM) sửa date/seatsTotal/price/note/status; giảm seatsTotal < đã bán → 409
+PATCH  /api/departures/:id/toggle (CEO/PM) ngừng/mở bán
+DELETE /api/departures/:id        (CEO only) — chặn nếu chuyến đã có booking (409)
+```
+`departures.db`: `{ departureId (DEP-xxx), productId, productName (snapshot), date (YYYY-MM-DD), seatsTotal, price (giá bán/khách; 0 = dùng defaultPrice sản phẩm), status (OPEN|CLOSED|CANCELLED), note, active, createdAt/updatedAt/createdBy }`.
+**seatsSold KHÔNG lưu** — luôn tính từ bookings gắn `departureId` (status ≠ CANCELLED) → huỷ đơn tự trả chỗ, không lệch. Logic dùng chung: `src/services/departures.js` (soldForDeparture/availabilityOf/capacityError).
+Tạo booking kèm `departureId` (admin + webhook) → kiểm tra còn chỗ (overbooking → 409), snapshot ngày/sản phẩm/giá từ chuyến, tự tính `payment.amount` = giá × pax nếu form không nhập. UI: trang "Lịch khởi hành" + ô chọn chuyến trong form Tạo booking.
+
+### Reviews / NPS (đánh giá sau tour)
+```
+POST /api/reviews                 (CÔNG KHAI — khách gửi; rate limit 10/15min/IP) body: {bookingId, phone, stars 1-5*, nps 0-10?, comment?}
+                                  khớp mã đơn + SĐT, tour phải COMPLETED, mỗi booking 1 review; ≤2★/NPS≤6 → followUp.needed
+GET  /api/reviews/public          (CÔNG KHAI) review đã duyệt, che tên khách, không lộ SĐT/mã đơn → {reviews, stats}
+GET  /api/reviews                 (bookings:read) ?published=true|false &productId= &negative=true → {reviews, stats}
+GET  /api/reviews/stats           (bookings:read) → {overall, byProduct[], pendingPublish, needFollowUp}
+PATCH  /api/reviews/:id           (CEO/TPDH) body: {published?, reply?, followUpDone?}
+DELETE /api/reviews/:id           (CEO only)
+```
+`reviews.db`: `{ reviewId (REV-xxx), bookingId, productId, productName, customerName, phone, stars, nps, comment, published (mặc định false — CEO/TPDH duyệt mới hiện public), reply, followUp:{needed,done}, source, createdAt/updatedAt }`.
+Logic thuần: `src/services/reviews.js` (npsCategory 9-10/7-8/0-6, isNegative, computeStats: avgStars + NPS = %promoter−%detractor). Đánh giá tệ → ghi note cảnh báo vào booking + báo CEO/TPDH real-time (`notifier.notifyNegativeReview`). Email cảm ơn chèn link `/danhgia?ma=<bookingId>`. Post-analysis gắn avgStars/NPS per sản phẩm. UI: trang "Đánh giá" (cards NPS/sao + duyệt/trả lời/chăm sóc) + trang khách công khai `/danhgia` (public/danhgia.html).
+
 ---
 
 ## Roles & Permissions
@@ -514,9 +540,12 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Giao tiếp khách tự động: xác nhận (khi CONFIRMED) → nhắc T-3 → cảm ơn/đánh giá sau tour (cron 08:00 + gửi tay, dedupe)
 - [x] Độ bền: health check nâng cao (uptime/db/RAM/lỗi), ring buffer lỗi + viewer CEO, error handler + process handlers, hook Sentry
 - [x] Huỷ booking 2 người (maker-checker): yêu cầu huỷ + lý do → CEO/TPDH khác duyệt; chặn huỷ trực tiếp, chống huỷ đơn phương
+- [x] Lịch khởi hành + quản lý số chỗ (departures/inventory): bán theo chuyến có ngày + seatsTotal, seatsSold tính tự động từ booking (huỷ tự trả chỗ), chống overbooking; đặt booking theo chuyến tự snapshot ngày/giá
+- [x] Đánh giá / NPS sau tour: khách gửi qua trang công khai /danhgia (khớp mã đơn + SĐT), duyệt hiển thị + trả lời; đánh giá tệ tự báo CEO/TPDH + ghi note; gắn avgStars/NPS vào Post Analysis
 
 ## Tính năng chưa có (backlog)
 
+- [ ] Cổng thanh toán online thật (VNPay/MoMo/Stripe) — hiện receipts vẫn ghi tay
 - [ ] Migrate sang MongoDB khi scale
 
 ---

@@ -119,6 +119,12 @@
       <a onclick="showPage('suppliers')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
         <span>🤝</span><span>NCC</span>
       </a>
+      <a onclick="showPage('departures')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+        <span>🗓️</span><span>Lịch khởi hành</span>
+      </a>
+      <a onclick="showPage('reviews')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
+        <span>⭐</span><span>Đánh giá</span>
+      </a>
       <div id="navUsers" class="hidden">
         <a onclick="showPage('users')" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-blue-800 transition text-sm">
           <span>👥</span><span>Quản lý User</span>
@@ -330,6 +336,13 @@
       <div class="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
         <div class="grid grid-cols-2 gap-4">
           <div class="col-span-2">
+            <label class="label">🗓️ Đặt theo chuyến khởi hành (tuỳ chọn — tự điền tour, ngày, giá & giữ chỗ)</label>
+            <select id="f-departureSel" class="input" onchange="applyDepartureSelect()">
+              <option value="">— Không dùng chuyến —</option>
+            </select>
+            <p id="f-dep-hint" class="hidden mt-1.5 text-xs bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5 text-teal-700"></p>
+          </div>
+          <div class="col-span-2">
             <label class="label">Chọn từ catalog sản phẩm (tuỳ chọn — tự điền tên, loại, giá & dự toán chi)</label>
             <select id="f-productSel" class="input" onchange="applyProductSelect()">
               <option value="">— Nhập tay, không dùng catalog —</option>
@@ -521,6 +534,35 @@
         </select>
       </div>
       <div id="supplierTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- DEPARTURES PAGE (Lịch khởi hành + số chỗ) -->
+    <div id="page-departures" class="page">
+      <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h2 class="text-2xl font-bold text-gray-800">🗓️ Lịch khởi hành</h2>
+        <button id="btnNewDeparture" onclick="openDepartureModal()" class="hidden bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-800">+ Mở chuyến</button>
+      </div>
+      <p class="text-xs text-gray-400 mb-4">Bán tour theo chuyến có ngày + số chỗ. Số chỗ đã bán tính tự động từ booking gắn chuyến (huỷ đơn tự trả chỗ) — chống overbooking.</p>
+      <label class="flex items-center gap-2 text-sm text-gray-600 mb-4"><input type="checkbox" id="depUpcoming" checked onchange="loadDepartures()"> Chỉ chuyến sắp tới</label>
+      <div id="departureTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
+    </div>
+
+    <!-- REVIEWS PAGE (Đánh giá / NPS) -->
+    <div id="page-reviews" class="page">
+      <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h2 class="text-2xl font-bold text-gray-800">⭐ Đánh giá khách hàng</h2>
+        <a href="/danhgia" target="_blank" class="text-xs text-blue-700 hover:underline">Mở trang khách gửi đánh giá →</a>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="reviewCards"></div>
+      <div class="mb-4 flex gap-2 items-center flex-wrap">
+        <select id="revFilter" onchange="loadReviews()" class="input" style="width:auto">
+          <option value="">Tất cả đánh giá</option>
+          <option value="pending">Chờ duyệt</option>
+          <option value="published">Đã duyệt</option>
+          <option value="negative">Cần chăm sóc (≤2★ / NPS thấp)</option>
+        </select>
+      </div>
+      <div id="reviewTable" class="bg-white rounded-xl shadow-sm overflow-hidden"></div>
     </div>
 
     <!-- REVENUE PAGE -->
@@ -812,6 +854,29 @@
     <div class="mt-5 flex gap-3">
       <button onclick="submitSupplier()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
       <button onclick="closeModal('modalSupplier')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalDeparture" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <h3 id="dep-title" class="text-lg font-bold mb-5">Mở chuyến khởi hành</h3>
+    <input id="dep-id" type="hidden"/>
+    <div class="space-y-3">
+      <div><label class="label">Sản phẩm tour *</label><select id="dep-product" class="input"></select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label">Ngày khởi hành *</label><input id="dep-date" type="date" class="input"/></div>
+        <div><label class="label">Số chỗ *</label><input id="dep-seats" type="number" min="1" class="input" placeholder="vd: 20"/></div>
+      </div>
+      <div><label class="label">Giá bán/khách (VNĐ) <span class="text-gray-400 font-normal">— để trống = dùng giá mặc định sản phẩm</span></label><input id="dep-price" type="number" min="0" class="input" placeholder="0"/></div>
+      <div><label class="label">Ghi chú</label><input id="dep-note" class="input" placeholder="vd: đoàn ghép, HDV tiếng Anh..."/></div>
+      <div id="dep-status-wrap" class="hidden"><label class="label">Trạng thái</label>
+        <select id="dep-status" class="input"><option value="OPEN">Mở nhận khách</option><option value="CLOSED">Đóng nhận khách</option><option value="CANCELLED">Huỷ chuyến</option></select></div>
+    </div>
+    <div id="departureError" class="hidden mt-3 bg-red-50 text-red-700 rounded-lg p-3 text-sm"></div>
+    <div class="mt-5 flex gap-3">
+      <button onclick="submitDeparture()" class="bg-blue-900 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-800">Lưu</button>
+      <button onclick="closeModal('modalDeparture')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Huỷ</button>
     </div>
   </div>
 </div>
@@ -1138,6 +1203,7 @@ function showApp() {
     document.getElementById('navKetoan').classList.remove('hidden');
   }
   if (['CEO','PM'].includes(USER.role))   document.getElementById('btnNewProduct').classList.remove('hidden');
+  if (['CEO','PM'].includes(USER.role))   document.getElementById('btnNewDeparture').classList.remove('hidden');
   if (['CEO','TPDH'].includes(USER.role)) document.getElementById('btnNewSupplier').classList.remove('hidden');
   if (['CEO','KETOAN','TPDH'].includes(USER.role)) document.getElementById('navReports').classList.remove('hidden');
   loadStaff();
@@ -1197,11 +1263,13 @@ function showPage(page) {
   if (page === 'customers')  loadCustomers();
   if (page === 'calendar')   loadCalendar();
   if (page === 'payables')   loadPayables();
-  if (page === 'new-booking') { fillProductSelect(); document.getElementById('f-crm-hint')?.classList.add('hidden'); }
+  if (page === 'new-booking') { fillProductSelect(); fillDepartureSelect(); document.getElementById('f-crm-hint')?.classList.add('hidden'); }
   if (page === 'checklist')  loadChecklist();
   if (page === 'opsboard')   loadOpsBoard();
   if (page === 'cl-summary') loadClSummary();
   if (page === 'revenue')    loadRevenue();
+  if (page === 'departures') loadDepartures();
+  if (page === 'reviews')    loadReviews();
 }
 
 // ── Dashboard ─────────────────────────────────────────────
@@ -3671,6 +3739,167 @@ async function toggleProduct(id) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ── Departures (Lịch khởi hành + số chỗ) ──────────────────
+const DEP_STATUS_BADGE = {
+  OPEN: '<span class="text-xs text-green-600 font-semibold">🟢 Mở bán</span>',
+  CLOSED: '<span class="text-xs text-gray-500 font-semibold">🔒 Đã đóng</span>',
+  CANCELLED: '<span class="text-xs text-red-600 font-semibold">✖ Đã huỷ</span>',
+};
+async function loadDepartures() {
+  const tableEl = document.getElementById('departureTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(3).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const upcoming = document.getElementById('depUpcoming').checked;
+    const { departures } = await api(`/departures${upcoming ? '?upcoming=true' : ''}`);
+    window._departures = departures;
+    if (!departures.length) {
+      tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Chưa có chuyến khởi hành nào. Mở chuyến để bán tour theo ngày + số chỗ (chống overbooking).</p>';
+      return;
+    }
+    const canManage = ['CEO','PM'].includes(USER.role);
+    tableEl.innerHTML = `
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider border-b">
+          <tr><th class="px-4 py-3">Tour</th><th class="px-4 py-3">Ngày KH</th><th class="px-4 py-3">Số chỗ</th>
+            <th class="px-4 py-3">Giá/khách</th><th class="px-4 py-3">Trạng thái</th>${canManage ? '<th class="px-4 py-3">Action</th>' : ''}</tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+        ${departures.map(d => {
+          const pct = d.seatsTotal ? Math.round(d.seatsSold / d.seatsTotal * 100) : 0;
+          const barColor = d.seatsLeft <= 0 ? 'bg-red-500' : d.seatsLeft <= d.seatsTotal * 0.2 ? 'bg-orange-500' : 'bg-green-500';
+          return `
+          <tr class="hover:bg-gray-50 ${!d.active ? 'opacity-50' : ''}">
+            <td class="px-4 py-3"><div class="font-medium">${esc(d.productName)}</div>${d.note ? `<div class="text-xs text-gray-400">${esc(d.note)}</div>` : ''}</td>
+            <td class="px-4 py-3 whitespace-nowrap">${d.date}</td>
+            <td class="px-4 py-3 min-w-40">
+              <div class="flex items-center justify-between text-xs mb-1"><span class="font-semibold ${d.full ? 'text-red-600' : ''}">${d.seatsSold}/${d.seatsTotal}</span><span class="text-gray-400">${d.full ? 'Hết chỗ' : 'còn ' + d.seatsLeft}</span></div>
+              <div class="w-full bg-gray-100 rounded-full h-1.5"><div class="${barColor} h-1.5 rounded-full" style="width:${pct}%"></div></div>
+            </td>
+            <td class="px-4 py-3 font-semibold whitespace-nowrap">${d.price ? Number(d.price).toLocaleString('vi-VN') + 'đ' : '<span class="text-xs text-gray-400">giá SP</span>'}</td>
+            <td class="px-4 py-3">${DEP_STATUS_BADGE[d.status] || d.status}${!d.active ? ' <span class="text-xs text-gray-400">(ngừng bán)</span>' : ''}</td>
+            ${canManage ? `<td class="px-4 py-3"><div class="flex gap-2 flex-wrap">
+              <button data-id="${d.departureId}" onclick="openDepartureModal(this.dataset.id)" class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✏️ Sửa</button>
+              <button data-id="${d.departureId}" onclick="toggleDeparture(this.dataset.id)" class="text-xs border px-2 py-1 rounded ${d.active ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">${d.active ? '⏸ Ngừng' : '▶ Mở bán'}</button>
+            </div></td>` : ''}
+          </tr>`;
+        }).join('')}
+        </tbody></table></div>`;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+
+function openDepartureModal(depId) {
+  const d = depId ? (window._departures||[]).find(x => x.departureId === depId) : null;
+  document.getElementById('dep-title').textContent = d ? `Sửa chuyến — ${d.productName}` : 'Mở chuyến khởi hành';
+  document.getElementById('dep-id').value = d ? d.departureId : '';
+  // Chỉ cho chọn sản phẩm đang bán; khi sửa, khoá sản phẩm (giữ nguyên)
+  const sel = document.getElementById('dep-product');
+  sel.innerHTML = PRODUCTS_LIST.map(p => `<option value="${p.productId}">${esc(p.name)}</option>`).join('');
+  sel.value = d ? d.productId : (PRODUCTS_LIST[0]?.productId || '');
+  sel.disabled = !!d;
+  document.getElementById('dep-date').value = d ? d.date : '';
+  document.getElementById('dep-seats').value = d ? d.seatsTotal : '';
+  document.getElementById('dep-price').value = d && d.price ? d.price : '';
+  document.getElementById('dep-note').value = d ? (d.note || '') : '';
+  document.getElementById('dep-status-wrap').classList.toggle('hidden', !d);
+  if (d) document.getElementById('dep-status').value = d.status;
+  document.getElementById('departureError').classList.add('hidden');
+  if (!PRODUCTS_LIST.length) { document.getElementById('departureError').textContent = 'Chưa có sản phẩm tour nào — hãy tạo sản phẩm trước.'; document.getElementById('departureError').classList.remove('hidden'); }
+  document.getElementById('modalDeparture').classList.remove('hidden');
+}
+
+async function submitDeparture() {
+  const errEl = document.getElementById('departureError');
+  const err = m => { errEl.textContent = m; errEl.classList.remove('hidden'); };
+  errEl.classList.add('hidden');
+  const date = document.getElementById('dep-date').value;
+  const seats = parseInt(document.getElementById('dep-seats').value);
+  if (!date) return err('Vui lòng chọn ngày khởi hành');
+  if (!(seats > 0)) return err('Số chỗ phải lớn hơn 0');
+  const id = document.getElementById('dep-id').value;
+  const body = {
+    date, seatsTotal: seats,
+    price: parseInt(document.getElementById('dep-price').value) || 0,
+    note: document.getElementById('dep-note').value,
+  };
+  if (id) body.status = document.getElementById('dep-status').value;
+  else    body.productId = document.getElementById('dep-product').value;
+  try {
+    if (id) await api(`/departures/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+    else    await api('/departures',       { method:'POST',  body: JSON.stringify(body) });
+    closeModal('modalDeparture');
+    toast(id ? 'Đã cập nhật chuyến' : 'Đã mở chuyến khởi hành');
+    loadDepartures();
+  } catch(e) { err(e.message); }
+}
+
+async function toggleDeparture(id) {
+  try {
+    const res = await api(`/departures/${id}/toggle`, { method:'PATCH' });
+    toast(res.message);
+    loadDepartures();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Reviews (Đánh giá / NPS) ──────────────────────────────
+function starStr(n) { return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
+async function loadReviews() {
+  const cardsEl = document.getElementById('reviewCards');
+  const tableEl = document.getElementById('reviewTable');
+  tableEl.innerHTML = `<div class="p-6 space-y-3">${Array(3).fill('<div class="skeleton h-10 w-full"></div>').join('')}</div>`;
+  try {
+    const stats = await api('/reviews/stats');
+    cardsEl.innerHTML = [
+      ['Điểm trung bình', stats.overall.avgStars != null ? stats.overall.avgStars + ' ★' : '—', 'text-yellow-600'],
+      ['Chỉ số NPS', stats.overall.npsScore != null ? stats.overall.npsScore : '—', 'text-blue-700'],
+      ['Chờ duyệt', stats.pendingPublish, 'text-orange-600'],
+      ['Cần chăm sóc', stats.needFollowUp, stats.needFollowUp > 0 ? 'text-red-600' : 'text-gray-500'],
+    ].map(([label, val, cls]) => `<div class="bg-white rounded-xl shadow-sm p-4"><div class="text-xs text-gray-400 mb-1">${label}</div><div class="text-2xl font-bold ${cls}">${val}</div></div>`).join('');
+
+    const f = document.getElementById('revFilter').value;
+    const q = f === 'pending' ? '?published=false' : f === 'published' ? '?published=true' : f === 'negative' ? '?negative=true' : '';
+    const { reviews } = await api(`/reviews${q}`);
+    window._reviews = reviews;
+    if (!reviews.length) { tableEl.innerHTML = '<p class="text-gray-400 text-sm p-6">Chưa có đánh giá nào.</p>'; return; }
+    const canManage = ['CEO','TPDH'].includes(USER.role);
+    tableEl.innerHTML = `<div class="divide-y divide-gray-100">${reviews.map(r => `
+      <div class="p-4 ${r.followUp?.needed && !r.followUp?.done ? 'bg-red-50' : ''}">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-yellow-500 text-lg">${starStr(r.stars)}</span>
+              ${r.nps != null ? `<span class="text-xs px-2 py-0.5 rounded-full ${r.nps>=9?'bg-green-100 text-green-700':r.nps>=7?'bg-gray-100 text-gray-600':'bg-red-100 text-red-700'}">NPS ${r.nps}</span>` : ''}
+              ${r.published ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Đã duyệt</span>' : '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Chờ duyệt</span>'}
+              ${r.followUp?.needed && !r.followUp?.done ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">⚠️ Cần chăm sóc</span>' : ''}
+            </div>
+            <div class="text-sm text-gray-800 mt-1">${esc(r.comment) || '<span class="text-gray-300">(không có góp ý)</span>'}</div>
+            <div class="text-xs text-gray-400 mt-1">${esc(r.customerName)} · ${esc(r.productName)} · <a onclick="showDetail('${r.bookingId}')" class="text-blue-600 hover:underline cursor-pointer">${r.bookingId}</a> · ${(r.createdAt||'').slice(0,10)}</div>
+            ${r.reply ? `<div class="text-xs text-gray-600 mt-2 bg-gray-50 rounded-lg px-3 py-2">↩ <strong>Phản hồi:</strong> ${esc(r.reply.text)}</div>` : ''}
+          </div>
+          ${canManage ? `<div class="flex flex-col gap-1.5 items-end">
+            <button data-id="${r.reviewId}" onclick="togglePublishReview(this.dataset.id, ${!r.published})" class="text-xs border px-2 py-1 rounded ${r.published ? 'border-gray-300 text-gray-600 hover:bg-gray-50' : 'border-blue-300 text-blue-600 hover:bg-blue-50'}">${r.published ? 'Ẩn' : '✓ Duyệt'}</button>
+            <button data-id="${r.reviewId}" onclick="replyReviewPrompt(this.dataset.id)" class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">↩ Trả lời</button>
+            ${r.followUp?.needed && !r.followUp?.done ? `<button data-id="${r.reviewId}" onclick="doneFollowUp(this.dataset.id)" class="text-xs border border-green-300 text-green-600 px-2 py-1 rounded hover:bg-green-50">✓ Đã chăm sóc</button>` : ''}
+          </div>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+  } catch(e) { tableEl.innerHTML = `<p class="text-red-600 p-6 text-sm">${esc(e.message)}</p>`; }
+}
+async function togglePublishReview(id, publish) {
+  try { await api(`/reviews/${id}`, { method:'PATCH', body: JSON.stringify({ published: publish }) }); toast(publish ? 'Đã duyệt hiển thị công khai' : 'Đã ẩn'); loadReviews(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+async function replyReviewPrompt(id) {
+  const r = (window._reviews||[]).find(x => x.reviewId === id);
+  const text = prompt('Phản hồi công khai tới khách:', r?.reply?.text || '');
+  if (text === null) return;
+  try { await api(`/reviews/${id}`, { method:'PATCH', body: JSON.stringify({ reply: text }) }); toast('Đã lưu phản hồi'); loadReviews(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+async function doneFollowUp(id) {
+  try { await api(`/reviews/${id}`, { method:'PATCH', body: JSON.stringify({ followUpDone: true }) }); toast('Đã đánh dấu chăm sóc xong'); loadReviews(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
 // ── Suppliers (NCC) ───────────────────────────────────────
 function fillNccCategorySelects() {
   const opts = Object.entries(EXPENSE_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
@@ -3839,6 +4068,36 @@ function applyProductSelect() {
   document.getElementById('f-amount').value = p.defaultPrice * adults;
 }
 
+// Chuyến khởi hành còn chỗ (upcoming) — nạp vào ô chọn khi mở form tạo booking
+let DEPARTURES_LIST = [];
+async function fillDepartureSelect() {
+  const sel = document.getElementById('f-departureSel');
+  if (!sel) return;
+  try {
+    const { departures } = await api('/departures?active=true&upcoming=true');
+    DEPARTURES_LIST = departures.filter(d => d.status === 'OPEN' && d.seatsLeft > 0);
+  } catch(e) { DEPARTURES_LIST = []; }
+  sel.innerHTML = '<option value="">— Không dùng chuyến —</option>' +
+    DEPARTURES_LIST.map(d => `<option value="${d.departureId}">${esc(d.productName)} · ${d.date} · còn ${d.seatsLeft}/${d.seatsTotal} chỗ${d.price ? ' · ' + Number(d.price).toLocaleString('vi-VN') + 'đ' : ''}</option>`).join('');
+}
+
+function applyDepartureSelect() {
+  const id = document.getElementById('f-departureSel').value;
+  const hint = document.getElementById('f-dep-hint');
+  const d = DEPARTURES_LIST.find(x => x.departureId === id);
+  if (!d) { hint.classList.add('hidden'); return; }
+  // Điền tour + ngày + giá theo chuyến; khoá ngày để không lệch với chuyến
+  document.getElementById('f-product').value = d.productName;
+  document.getElementById('f-date').value = d.date;
+  if (d.productId) document.getElementById('f-productSel').value = d.productId;
+  const pax = (parseInt(document.getElementById('f-adults').value)||1) + (parseInt(document.getElementById('f-children').value)||0);
+  const prod = PRODUCTS_LIST.find(x => x.productId === d.productId);
+  const unit = d.price || (prod?.defaultPrice || 0);
+  if (unit) document.getElementById('f-amount').value = unit * pax;
+  hint.textContent = `Còn ${d.seatsLeft}/${d.seatsTotal} chỗ. Booking sẽ giữ chỗ trên chuyến này.`;
+  hint.classList.remove('hidden');
+}
+
 function toggleWellness() {
   const isW = document.getElementById('f-type').value === 'WELLNESS';
   document.getElementById('wellnessSection').classList.toggle('hidden', !isW);
@@ -3864,6 +4123,7 @@ async function submitBooking() {
   const body = {
     product, tourDate,
     productId: document.getElementById('f-productSel').value || null,
+    departureId: document.getElementById('f-departureSel').value || null,
     adults:   parseInt(document.getElementById('f-adults').value)||1,
     children: parseInt(document.getElementById('f-children').value)||0,
     customer: { name: cname, phone: cphone, email: document.getElementById('f-cemail').value },
@@ -3887,6 +4147,8 @@ async function submitBooking() {
     document.getElementById('f-paid').checked = false;
     document.getElementById('f-type').value = 'STANDARD';
     document.getElementById('f-productSel').value = '';
+    document.getElementById('f-departureSel').value = '';
+    document.getElementById('f-dep-hint').classList.add('hidden');
     document.getElementById('wellnessSection').classList.add('hidden');
     toast('Booking đã được tạo thành công!');
     showDetail(data.booking.bookingId);
@@ -4496,7 +4758,7 @@ async function loadPostAnalysis() {
       ? '<p class="text-gray-400 text-sm">Chưa có dữ liệu</p>'
       : `<table class="w-full text-sm">
           <thead class="text-left text-gray-500 border-b text-xs uppercase">
-            <tr><th class="pb-2 pr-3">Sản phẩm</th><th class="pb-2 pr-3">Tour</th><th class="pb-2 pr-3 text-right">Lãi</th><th class="pb-2 text-right">Margin</th></tr>
+            <tr><th class="pb-2 pr-3">Sản phẩm</th><th class="pb-2 pr-3">Tour</th><th class="pb-2 pr-3 text-right">Lãi</th><th class="pb-2 pr-3 text-right">Margin</th><th class="pb-2 text-right">Hài lòng</th></tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
           ${byProduct.map(g => `
@@ -4504,7 +4766,8 @@ async function loadPostAnalysis() {
               <td class="py-2.5 pr-3 max-w-44 truncate" title="${esc(g.product)}">${esc(g.product)}</td>
               <td class="py-2.5 pr-3">${g.tourCount} (${g.pax} khách)</td>
               <td class="py-2.5 pr-3 text-right font-bold whitespace-nowrap ${g.profit >= 0 ? 'text-green-600' : 'text-red-600'}">${g.profit >= 0 ? '+' : '−'}${fmtVnd(Math.abs(g.profit))}</td>
-              <td class="py-2.5 text-right">${g.margin != null ? g.margin + '%' : '—'}</td>
+              <td class="py-2.5 pr-3 text-right">${g.margin != null ? g.margin + '%' : '—'}</td>
+              <td class="py-2.5 text-right whitespace-nowrap ${g.avgStars != null && g.avgStars < 3 ? 'text-red-600 font-semibold' : 'text-gray-600'}">${g.avgStars != null ? '★ ' + g.avgStars + ' <span class="text-gray-300">(' + g.reviewCount + ')</span>' : '<span class="text-gray-300">—</span>'}</td>
             </tr>`).join('')}
           </tbody></table>`;
 
