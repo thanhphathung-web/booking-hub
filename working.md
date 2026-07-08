@@ -1,0 +1,78 @@
+# Booking Hub — Working Notes
+
+_Cập nhật: 2026-07-08_
+
+Tài liệu làm việc: trạng thái hiện tại, việc vừa làm, và todo còn lại. Đọc kèm `CLAUDE.md` (briefing đầy đủ).
+
+---
+
+## 1. Vừa hoàn thành trong phiên này (2026-07-08)
+
+### PWA — Cài app trên điện thoại + offline shell
+Commit `5a0497b` — đã push lên `origin/master`.
+
+| File | Vai trò |
+|---|---|
+| `public/manifest.webmanifest` | Metadata app: tên, icon, `display: standalone`, brand navy `#1F3864` |
+| `public/sw.js` | Service worker — offline app shell + cache tĩnh |
+| `public/icons/icon-192.png`, `icon-512.png` | Icon (nền navy + vòng tròn trắng + 3 chấm navy/teal/purple = hệ sinh thái 3 công ty) |
+| `scripts/gen-icons.js` | Sinh lại icon bằng pixel + zlib (không cần thư viện ảnh) |
+| `public/index.html` | Nhúng manifest/meta vào `<head>` + `initPWA()` (đăng ký SW + nút "📲 Cài app") |
+
+**Quyết định thiết kế an toàn (quan trọng):**
+- SW **tuyệt đối không cache `/api/`** → dữ liệu booking/tiền/đơn luôn tươi, không bao giờ hiện đơn cũ gây nhầm.
+- **Navigation network-first**, offline mới rơi về app shell đã cache (SPA vẫn mở được, UI tự báo lỗi mạng).
+- Static (icon/manifest) **stale-while-revalidate** → mở tức thì.
+- Bỏ qua cross-origin (Tailwind CDN) và non-GET request.
+- Đổi shell → **bump `CACHE_VERSION`** trong `sw.js` để client lấy bản mới.
+
+### Shortcut "Việc của tôi" (long-press icon)
+Commit `a07e32e` — đã push.
+
+- `manifest.shortcuts` → URL `/?view=tasks`.
+- Boot đọc `?view=tasks`: `showPage('dashboard')` → cuộn tới + highlight viền xanh khối 🎯 "Việc của tôi" 2.5s, rồi `history.replaceState` xoá param (refresh/back không kích lại).
+- Khối "Việc của tôi" được gán `id="cardMyTasks"`.
+- Bump `CACHE_VERSION` bh-v1 → **bh-v2**.
+
+**Cách dùng (sau khi Railway deploy):** giữ (long-press) icon app đã cài → menu hiện "Việc của tôi" → mở thẳng. Chỉ có sau khi **cài app** (không phải tab thường); máy cài bản cũ nhận shortcut khi SW cập nhật (mở lại app 1-2 lần).
+
+**Kiểm chứng:** manifest JSON hợp lệ; server phục vụ đúng content-type (`application/manifest+json`, `text/javascript`, `image/png`); **`npm test` → 170 pass, 0 fail**.
+
+---
+
+## 2. Cần user làm để PWA chạy thật
+- PWA install chỉ chạy trên **HTTPS** (Railway có sẵn) hoặc `localhost`. `http://` LAN không cài được.
+- Mở URL Railway trên điện thoại (Chrome/Safari) → "Thêm vào màn hình chính" hoặc nút **📲 Cài app** góc dưới phải.
+
+---
+
+## 3. Todo còn lại (backlog)
+
+### Backlog chính thức (CLAUDE.md)
+- [ ] **Cổng thanh toán online thật** (VNPay/MoMo/Stripe) — gap lớn nhất, receipts hiện vẫn ghi tay.
+- [ ] **Migrate sang MongoDB** khi scale.
+
+### Roadmap "top-1" còn lại (memory)
+- [ ] **Cổng NCC** — portal cho nhà cung cấp tự xác nhận dịch vụ/voucher.
+- [ ] **BI / Business Intelligence** — phễu/LTV/forecast, cohort khách, hiệu suất sản phẩm.
+- [ ] Nhóm 3 (xa hơn): dynamic pricing, kết nối OTA, đa ngôn ngữ/tiền tệ, loyalty points, AI chatbot.
+
+### Chờ user thao tác (không phải code)
+- [ ] Cấu hình **SMTP / Resend** thật (Railway Trial chặn SMTP → cần Hobby+ hoặc `RESEND_API_KEY`).
+- [ ] Cấu hình **Zalo OA** thật (`ZALO_APP_ID/SECRET/REFRESH_TOKEN`) — code có sẵn, **chưa test với OA thật**.
+- [ ] Cất giữ file mật khẩu / GitHub App.
+
+---
+
+## 4. Ghi chú vận hành nhanh
+- Chạy local: `node server.js` → http://localhost:3000
+- Smoke test (170 case, DB tạm, không đụng `data/`): `npm test`
+- Sinh lại icon PWA: `node scripts/gen-icons.js`
+- Deploy: push `master` → Railway tự deploy.
+- Tài khoản test: `ceo/ceo123`, `tpdh/tpdh123`, `cs/cs123`, `wc/wc123`, `ketoan/kt123`.
+
+### Gotcha khi verify UI (từ kinh nghiệm trước)
+- Cache-buster `?v=N` khi sửa index.html để né cache trình duyệt.
+- Token lưu ở `localStorage` key `bh_token`.
+- Kill node cũ trước khi restart server.
+- Fetch trong trang để giữ UTF-8 đúng.
