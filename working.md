@@ -36,7 +36,21 @@ Commit `a07e32e` — đã push.
 
 **Cách dùng (sau khi Railway deploy):** giữ (long-press) icon app đã cài → menu hiện "Việc của tôi" → mở thẳng. Chỉ có sau khi **cài app** (không phải tab thường); máy cài bản cũ nhận shortcut khi SW cập nhật (mở lại app 1-2 lần).
 
-**Kiểm chứng:** manifest JSON hợp lệ; server phục vụ đúng content-type (`application/manifest+json`, `text/javascript`, `image/png`); **`npm test` → 170 pass, 0 fail**.
+**Kiểm chứng tĩnh:** manifest JSON hợp lệ; server phục vụ đúng content-type (`application/manifest+json`, `text/javascript`, `image/png`); **`npm test` → 170 pass, 0 fail**.
+
+**Verify trực tiếp trong Chrome (2026-07-08, localhost:3100) — TẤT CẢ ĐẠT:**
+
+| Hạng mục | Kết quả |
+|---|---|
+| Service worker | ✅ Đăng ký, scope `/`, state `activated`, script `/sw.js` |
+| Manifest | ✅ `name` đúng, `display: standalone`, 4 icons, theme-color `#1F3864` |
+| apple-touch-icon | ✅ Có |
+| Cache | ✅ `bh-v2` chứa đúng app shell (`/`, manifest, 2 icon) |
+| **Không cache `/api/`** | ✅ Sau khi gọi login API, cache **không** chứa `/api/` — data luôn tươi |
+| Offline shell | ✅ `caches.match('/')` trả 200 — offline vẫn mở được app |
+| Installable | ✅ Chrome kích `beforeinstallprompt` → nút 📲 "Cài app" hiện thật |
+| Shortcut deep-link | ✅ `/?view=tasks` → đăng nhập, tự cuộn xuống khối 🎯 "Việc của tôi", URL tự xoá param |
+| Console | ✅ Không lỗi PWA/SW |
 
 ---
 
