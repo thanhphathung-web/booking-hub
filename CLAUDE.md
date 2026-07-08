@@ -542,6 +542,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Huỷ booking 2 người (maker-checker): yêu cầu huỷ + lý do → CEO/TPDH khác duyệt; chặn huỷ trực tiếp, chống huỷ đơn phương
 - [x] Lịch khởi hành + quản lý số chỗ (departures/inventory): bán theo chuyến có ngày + seatsTotal, seatsSold tính tự động từ booking (huỷ tự trả chỗ), chống overbooking; đặt booking theo chuyến tự snapshot ngày/giá
 - [x] Đánh giá / NPS sau tour: khách gửi qua trang công khai /danhgia (khớp mã đơn + SĐT), duyệt hiển thị + trả lời; đánh giá tệ tự báo CEO/TPDH + ghi note; gắn avgStars/NPS vào Post Analysis
+- [x] PWA: cài app trên điện thoại (`manifest.webmanifest` + `public/sw.js` + icon sinh sẵn `public/icons/`), mở tức thì, offline trả app shell. SW **không cache /api/** (data booking/tiền luôn tươi), network-first cho navigation, stale-while-revalidate cho static. Nút "📲 Cài app" hiện khi trình duyệt cho phép (beforeinstallprompt). Sinh lại icon: `node scripts/gen-icons.js`. Đổi shell → bump `CACHE_VERSION` trong sw.js
 
 ## Tính năng chưa có (backlog)
 

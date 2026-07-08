@@ -1,8 +1,17 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Booking Hub — Hệ sinh thái Du lịch & Wellness</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1F3864">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Booking Hub">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root { --navy:#1F3864; --teal:#006B6B; --purple:#4A235A; }
@@ -5235,7 +5244,42 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('statusDropdownMenu')?.classList.add('hidden');
     }
   });
+  initPWA();
 });
+
+// ── PWA: đăng ký service worker + nút cài app ────────────────
+function initPWA() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(err =>
+      console.warn('[PWA] SW register lỗi:', err));
+  }
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    let btn = document.getElementById('pwaInstallBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'pwaInstallBtn';
+      btn.innerHTML = '📲 Cài app';
+      btn.style.cssText = 'position:fixed;right:1rem;bottom:1rem;z-index:9998;background:#1F3864;color:#fff;'
+        + 'border:none;border-radius:9999px;padding:.6rem 1rem;font-size:.875rem;font-weight:600;'
+        + 'box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;';
+      btn.onclick = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        deferredPrompt = null;
+        btn.remove();
+      };
+      document.body.appendChild(btn);
+    }
+    btn.style.display = 'block';
+  });
+  window.addEventListener('appinstalled', () => {
+    document.getElementById('pwaInstallBtn')?.remove();
+  });
+}
 </script>
 </body>
 </html>
