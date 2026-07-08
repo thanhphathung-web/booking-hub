@@ -10,7 +10,9 @@ const NCC_CATEGORIES = ['XE', 'KHACHSAN', 'ANUONG', 'VE', 'BAOHIEM', 'YTE', 'KHA
 function withAvgRating(s) {
   const ratings = s.ratings || [];
   const avg = ratings.length ? Math.round(ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length * 10) / 10 : null;
-  return { ...s, avgRating: avg, ratingCount: ratings.length };
+  // portalKey = bí mật đăng nhập cổng NCC — không bao giờ trả trong list/detail thường
+  const { portalKey, ...rest } = s;
+  return { ...rest, avgRating: avg, ratingCount: ratings.length, hasPortal: !!portalKey };
 }
 
 // ── GET /api/suppliers ────────────────────────────────────
@@ -93,6 +95,28 @@ router.post('/:id/rating', requireAuth, async (req, res) => {
     await dbAsync.update('suppliers', { nccId: req.params.id },
       { $set: { updatedAt: entry.at }, $push: { ratings: entry } });
     res.status(201).json({ message: `Đã chấm ${score}★ cho ${supplier.name}` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/suppliers/:id/portal-key (CEO/TPDH) ─────────
+// Tạo link cổng NCC (/ncc?key=...) — lần đầu tạo key, regenerate=true tạo key mới (thu hồi link cũ).
+// Đây là endpoint DUY NHẤT trả portalKey ra ngoài.
+router.post('/:id/portal-key', ...requirePerm('ncc:manage'), async (req, res) => {
+  try {
+    const supplier = await dbAsync.findOne('suppliers', { nccId: req.params.id });
+    if (!supplier) return res.status(404).json({ error: 'Không tìm thấy NCC' });
+
+    let key = supplier.portalKey;
+    if (!key || req.body.regenerate === true) {
+      key = require('crypto').randomBytes(18).toString('base64url'); // 24 ký tự URL-safe
+      await dbAsync.update('suppliers', { nccId: req.params.id },
+        { $set: { portalKey: key, updatedAt: new Date().toISOString() } });
+      await dbAsync.insert('activity', { type: 'NCC_PORTAL_KEY', bookingId: null,
+        to: req.params.id, by: req.user.username, at: new Date().toISOString() });
+    }
+    const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({ portalKey: key, portalUrl: `${base}/ncc?key=${key}`,
+      message: req.body.regenerate ? 'Đã tạo link mới — link cũ hết hiệu lực' : 'Link cổng NCC' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

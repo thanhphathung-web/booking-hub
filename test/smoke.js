@@ -373,6 +373,63 @@ async function login(username, password) {
       check('stats.unconfirmedSoon đếm tour cận ngày còn NCC chưa xác nhận', r.data.unconfirmedSoon >= 1, String(r.data.unconfirmedSoon));
     }
 
+    console.log('\n— Cổng NCC (portal tự xác nhận) —');
+    {
+      // Booking + dịch vụ gắn NCC để portal thao tác
+      r = await req('POST', '/api/bookings', { token: ceo, body: {
+        product: 'Tour Portal NCC 2N1Đ', tourDate: '2030-12-01', adults: 3,
+        customer: { name: 'Khach Portal', phone: '0900000051' } } });
+      const pid = r.data.booking.bookingId;
+      r = await req('POST', `/api/bookings/${pid}/services`, { token: nvdh,
+        body: { category: 'KHACHSAN', desc: 'KS Portal 2 phòng', nccId } });
+      const psvcId = r.data.service.svcId;
+
+      r = await req('POST', `/api/suppliers/${nccId}/portal-key`, { token: cs, body: {} });
+      check('CS tạo link cổng NCC → 403', r.status === 403);
+      r = await req('POST', `/api/suppliers/${nccId}/portal-key`, { token: ceo, body: {} });
+      check('CEO tạo link cổng NCC → có portalUrl', r.status === 200 && r.data.portalUrl?.includes('/ncc?key='));
+      const pkey = r.data.portalKey;
+      r = await req('POST', `/api/suppliers/${nccId}/portal-key`, { token: ceo, body: {} });
+      check('gọi lại không regenerate → key giữ nguyên', r.data.portalKey === pkey);
+
+      r = await req('GET', '/api/suppliers', { token: nvdh });
+      const sp = r.data.suppliers.find(s => s.nccId === nccId);
+      check('GET /suppliers không lộ portalKey, có hasPortal', sp && !('portalKey' in sp) && sp.hasPortal === true);
+
+      r = await req('POST', '/api/ncc-portal/me', { body: { key: 'sai-key-123456789012345' } });
+      check('portal sai key → 404', r.status === 404);
+      r = await req('POST', '/api/ncc-portal/me', { body: { key: pkey } });
+      check('portal đúng key → thấy dịch vụ chờ xác nhận',
+        r.status === 200 && r.data.pending.some(s => s.svcId === psvcId), JSON.stringify(r.data.pending));
+      const pItem = r.data.pending.find(s => s.svcId === psvcId);
+      check('portal chỉ trả trường an toàn — không lộ tên/SĐT khách, tiền',
+        pItem && !('customer' in pItem) && !('payment' in pItem) && pItem.pax === 3);
+
+      r = await req('POST', '/api/ncc-portal/confirm', { body: { key: pkey, bookingId: pid, svcId: psvcId } });
+      check('xác nhận thiếu voucher → 400', r.status === 400);
+      r = await req('POST', '/api/ncc-portal/decline', { body: { key: pkey, bookingId: pid, svcId: psvcId, reason: 'Hết phòng ngày này' } });
+      check('NCC báo không nhận → OK, status vẫn REQUESTED + cờ declined',
+        r.status === 200 && r.data.service.status === 'REQUESTED' && r.data.service.declined?.reason === 'Hết phòng ngày này');
+      r = await req('POST', '/api/ncc-portal/confirm', { body: { key: pkey, bookingId: pid, svcId: psvcId, voucherNo: 'VC-PORTAL-01' } });
+      check('NCC xác nhận kèm voucher → CONFIRMED, gỡ cờ declined',
+        r.status === 200 && r.data.service.status === 'CONFIRMED' && !r.data.service.declined);
+      r = await req('GET', `/api/bookings/${pid}`, { token: ceo });
+      const svcAfter = r.data.booking.services.find(s => s.svcId === psvcId);
+      check('admin thấy confirmedBy = cổng NCC', svcAfter?.confirmedBy === 'ncc:' + nccId && !!svcAfter?.voucherNo);
+      r = await req('POST', '/api/ncc-portal/confirm', { body: { key: pkey, bookingId: pid, svcId: psvcId, voucherNo: 'X' } });
+      check('xác nhận lại dịch vụ đã CONFIRMED → 409', r.status === 409);
+
+      r = await req('POST', `/api/suppliers/${nccId}/portal-key`, { token: ceo, body: { regenerate: true } });
+      const newKey = r.data.portalKey;
+      check('regenerate → key mới khác key cũ', newKey && newKey !== pkey);
+      r = await req('POST', '/api/ncc-portal/me', { body: { key: pkey } });
+      check('key cũ bị thu hồi → 404', r.status === 404);
+      r = await req('POST', '/api/ncc-portal/me', { body: { key: newKey } });
+      check('key mới hoạt động', r.status === 200);
+      r = await req('GET', '/ncc');
+      check('trang /ncc phục vụ được', r.status === 200);
+    }
+
     console.log('\n— Chương trình tour + rooming —');
     {
       r = await req('POST', '/api/bookings', { token: ceo, body: {

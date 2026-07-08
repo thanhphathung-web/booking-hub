@@ -72,6 +72,23 @@ function buildNegativeReviewMsg(b, review) {
   return { subject, text };
 }
 
+function buildSvcPortalMsg(b, svc, supplier, action) {
+  const ok = action === 'CONFIRMED';
+  const subject = ok
+    ? `🤝 [Booking Hub] NCC ${supplier.name} đã xác nhận: ${svc.desc}`
+    : `⛔ [Booking Hub] NCC ${supplier.name} BÁO KHÔNG NHẬN: ${svc.desc}`;
+  const text = [
+    ok ? `NCC vừa xác nhận giữ chỗ qua cổng NCC:` : `NCC vừa báo KHÔNG nhận được dịch vụ — cần tìm phương án thay thế ngay:`, '',
+    `• Tour: ${b.product} (${b.bookingId})`,
+    `• Ngày KH: ${b.tourDate}`,
+    `• Dịch vụ: ${svc.desc}`,
+    `• NCC: ${supplier.name}${supplier.phone ? ' — ' + supplier.phone : ''}`,
+    ok ? `• Số voucher: ${svc.voucherNo}` : `• Lý do: ${svc.declined?.reason || ''}`,
+    '', `Mở Booking Hub: ${appUrl()}`,
+  ].filter(x => x !== '').join('\n');
+  return { subject, text };
+}
+
 // ── Sự kiện ───────────────────────────────────────────────
 // Đánh giá tệ sau tour → báo quản lý (CEO + TPDH) để chăm sóc, đóng vòng dịch vụ
 async function notifyNegativeReview(booking, review) {
@@ -107,7 +124,18 @@ async function notifyIncident(booking, incident, reporterName) {
   } catch (e) { return { error: e.message }; }
 }
 
+// NCC thao tác trên cổng NCC (xác nhận / báo không nhận) → báo quản lý (CEO + TPDH)
+async function notifySvcPortal(booking, svc, supplier, action) {
+  try {
+    const managers = await dbAsync.find('users', { active: true, role: { $in: ['CEO', 'TPDH'] } });
+    const { subject, text } = buildSvcPortalMsg(booking, svc, supplier, action);
+    const results = [];
+    for (const m of managers) results.push(await notifyUser(m, subject, text));
+    return results;
+  } catch (e) { return { error: e.message }; }
+}
+
 module.exports = {
-  channelStatus, notifyUser, notifyAssignment, notifyIncident, notifyNegativeReview,
-  buildAssignmentMsg, buildIncidentMsg, buildNegativeReviewMsg,
+  channelStatus, notifyUser, notifyAssignment, notifyIncident, notifyNegativeReview, notifySvcPortal,
+  buildAssignmentMsg, buildIncidentMsg, buildNegativeReviewMsg, buildSvcPortalMsg,
 };

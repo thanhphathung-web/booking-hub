@@ -366,7 +366,22 @@ PATCH  /api/suppliers/:id/toggle (CEO/TPDH)
 POST   /api/suppliers/:id/rating body: {score 1-5, note?, bookingId?}  (mọi role — PT-05)
 DELETE /api/suppliers/:id        (CEO only)
 ```
-`suppliers.db`: `{ nccId (NCC-xxx), name, category (XE|KHACHSAN|ANUONG|VE|BAOHIEM|YTE|KHAC), phone, email, contact, address, notes, ratings: [{score, note, bookingId, by, name, at}], active }`.
+`suppliers.db`: `{ nccId (NCC-xxx), name, category (XE|KHACHSAN|ANUONG|VE|BAOHIEM|YTE|KHAC), phone, email, contact, address, notes, ratings: [{score, note, bookingId, by, name, at}], portalKey (bí mật cổng NCC — bị strip khỏi mọi response thường, thay bằng hasPortal; chỉ trả qua portal-key endpoint), active }`.
+
+### Cổng NCC (portal cho NCC tự xác nhận dịch vụ — không cần đăng nhập)
+```
+POST /api/suppliers/:id/portal-key  (ncc:manage — CEO/TPDH) body: {regenerate?} → {portalKey, portalUrl}
+                                    lần đầu tạo key (crypto 24 ký tự URL-safe); regenerate=true = thu hồi link cũ
+POST /api/ncc-portal/me       (CÔNG KHAI; rate limit 60/15min/IP) body: {key}
+                              → {supplier {name,category,contact}, pending[], confirmed[]} — dịch vụ gắn nccId
+                              trên booking còn sống (NEW/CONFIRMED/IN_PROGRESS); CHỈ trường an toàn
+                              (tour, ngày, pax, mô tả) — tuyệt đối không lộ tên/SĐT khách, tiền, checklist
+POST /api/ncc-portal/confirm  body: {key, bookingId, svcId, voucherNo*, note?} — REQUESTED → CONFIRMED,
+                              confirmedBy='ncc:<nccId>', gỡ cờ declined; báo real-time CEO/TPDH (notifySvcPortal)
+POST /api/ncc-portal/decline  body: {key, bookingId, svcId, reason*} — KHÔNG đổi status (vẫn REQUESTED để
+                              chặn Go/No-Go), chỉ cắm svc.declined={reason,at} + báo real-time CEO/TPDH
+```
+UI: trang `/ncc` (public/ncc.html — mobile-first; NCC mở link thấy việc chờ, bấm xác nhận + nhập voucher hoặc báo không nhận kèm lý do). Admin: nút "🔗 Cổng" trên bảng NCC (CEO/TPDH) → modal link + copy + tạo link mới; card dịch vụ trên booking detail hiện cờ đỏ "⛔ NCC báo không nhận" khi có declined.
 
 ### Departures (Lịch khởi hành + số chỗ)
 ```
@@ -468,7 +483,7 @@ router.post('/something', ...requirePerm('bookings:create'), handler);
 node server.js
 # → http://localhost:3000
 
-# Smoke test (71 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
+# Smoke test (186 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
 npm test
 
 # Test API nhanh
@@ -542,6 +557,7 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Huỷ booking 2 người (maker-checker): yêu cầu huỷ + lý do → CEO/TPDH khác duyệt; chặn huỷ trực tiếp, chống huỷ đơn phương
 - [x] Lịch khởi hành + quản lý số chỗ (departures/inventory): bán theo chuyến có ngày + seatsTotal, seatsSold tính tự động từ booking (huỷ tự trả chỗ), chống overbooking; đặt booking theo chuyến tự snapshot ngày/giá
 - [x] Đánh giá / NPS sau tour: khách gửi qua trang công khai /danhgia (khớp mã đơn + SĐT), duyệt hiển thị + trả lời; đánh giá tệ tự báo CEO/TPDH + ghi note; gắn avgStars/NPS vào Post Analysis
+- [x] Cổng NCC: link riêng per NCC (/ncc?key=...) để nhà cung cấp tự xác nhận giữ chỗ + nhập voucher hoặc báo không nhận (cờ đỏ + báo real-time CEO/TPDH); CEO/TPDH tạo/thu hồi link từ bảng NCC
 - [x] PWA: cài app trên điện thoại (`manifest.webmanifest` + `public/sw.js` + icon sinh sẵn `public/icons/`), mở tức thì, offline trả app shell. SW **không cache /api/** (data booking/tiền luôn tươi), network-first cho navigation, stale-while-revalidate cho static. Nút "📲 Cài app" hiện khi trình duyệt cho phép (beforeinstallprompt). Sinh lại icon: `node scripts/gen-icons.js`. Đổi shell → bump `CACHE_VERSION` trong sw.js
 
 ## Tính năng chưa có (backlog)

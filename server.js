@@ -43,6 +43,7 @@ app.use('/api/lookup',     require('./src/routes/lookup'));
 app.use('/api/notify',     require('./src/routes/notify'));
 app.use('/api/departures', require('./src/routes/departures'));
 app.use('/api/reviews',    require('./src/routes/reviews'));
+app.use('/api/ncc-portal', require('./src/routes/nccPortal'));
 
 // Health check — dùng làm target cho uptime monitor ngoài (UptimeRobot...)
 const errorLog = require('./src/services/errorLog');
@@ -85,6 +86,10 @@ app.get('/nvdh', (req, res) =>
 // Trang khách gửi đánh giá / NPS sau tour (link trong email cảm ơn)
 app.get('/danhgia', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'danhgia.html')));
+
+// Cổng NCC — nhà cung cấp tự xác nhận dịch vụ (link riêng per NCC, CEO/TPDH gửi 1 lần)
+app.get('/ncc', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'ncc.html')));
 
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>

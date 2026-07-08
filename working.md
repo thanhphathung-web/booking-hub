@@ -6,7 +6,28 @@ Tài liệu làm việc: trạng thái hiện tại, việc vừa làm, và todo
 
 ---
 
+## 0. User đã hoàn thành (2026-07-08) — hạ tầng vận hành
+
+- [x] **Bước 1 — chuỗi an toàn dữ liệu:** cấu hình email thật (Resend/SMTP) + xác nhận volume Railway → backup đêm 02:00, digest 07:30, email khách, nhắc real-time đã sống.
+- [x] **Bước 2 — vệ sinh bảo mật:** đổi mật khẩu mặc định, gắn uptime monitor vào `/api/health`, cấu hình Zalo OA.
+- ⏳ **Bước 3 — cổng thanh toán online (VNPay/MoMo):** user chủ động làm sau, dự kiến **~2026-09** (thủ tục merchant cần thời gian). Chưa code phần này.
+
+---
+
 ## 1. Vừa hoàn thành trong phiên này (2026-07-08)
+
+### Cổng NCC — portal nhà cung cấp tự xác nhận dịch vụ
+Nhà cung cấp nhận link riêng `/ncc?key=<token>` (CEO/TPDH tạo từ bảng NCC, gửi Zalo/email 1 lần) → mở là thấy các dịch vụ REQUESTED gắn họ trên booking còn sống → bấm **Xác nhận + nhập số voucher** (→ CONFIRMED, nuôi Go/No-Go) hoặc **Báo không nhận** kèm lý do (→ cờ đỏ, status vẫn REQUESTED để chặn Go/No-Go, báo real-time CEO/TPDH).
+
+| File | Vai trò |
+|---|---|
+| `src/routes/nccPortal.js` | 3 endpoint công khai `/api/ncc-portal/me\|confirm\|decline` (rate limit 60/15min/IP) |
+| `src/routes/suppliers.js` | `POST /:id/portal-key` (tạo/thu hồi link); strip `portalKey` khỏi mọi response thường (`hasPortal` thay thế) |
+| `src/services/notifier.js` | `notifySvcPortal` — NCC xác nhận/từ chối → báo ngay CEO/TPDH qua email/Zalo |
+| `public/ncc.html` | Trang NCC mobile-first (route `/ncc`) |
+| `public/index.html` | Nút "🔗 Cổng" + modal link (copy/tạo mới) trên bảng NCC; cờ đỏ "⛔ NCC báo không nhận" trên card dịch vụ |
+
+Bảo mật: key crypto 24 ký tự, POST để key không vào access log, chỉ trả trường an toàn (không tên/SĐT khách, không tiền), regenerate = thu hồi link cũ ngay. **`npm test` → 186 pass, 0 fail** (+16 case cổng NCC).
 
 ### PWA — Cài app trên điện thoại + offline shell
 Commit `5a0497b` — đã push lên `origin/master`.
@@ -63,18 +84,13 @@ Commit `a07e32e` — đã push.
 ## 3. Todo còn lại (backlog)
 
 ### Backlog chính thức (CLAUDE.md)
-- [ ] **Cổng thanh toán online thật** (VNPay/MoMo/Stripe) — gap lớn nhất, receipts hiện vẫn ghi tay.
+- [ ] **Cổng thanh toán online thật** (VNPay/MoMo/Stripe) — user làm ~2026-09 (xem mục 0).
 - [ ] **Migrate sang MongoDB** khi scale.
 
 ### Roadmap "top-1" còn lại (memory)
-- [ ] **Cổng NCC** — portal cho nhà cung cấp tự xác nhận dịch vụ/voucher.
-- [ ] **BI / Business Intelligence** — phễu/LTV/forecast, cohort khách, hiệu suất sản phẩm.
+- [ ] **Cổng NCC** — portal cho nhà cung cấp tự xác nhận dịch vụ/voucher. **← ĐANG LÀM phiên này**
+- [ ] **BI / Business Intelligence** — phễu/LTV/forecast, cohort khách, hiệu suất sản phẩm (đợi có dữ liệu tour thật).
 - [ ] Nhóm 3 (xa hơn): dynamic pricing, kết nối OTA, đa ngôn ngữ/tiền tệ, loyalty points, AI chatbot.
-
-### Chờ user thao tác (không phải code)
-- [ ] Cấu hình **SMTP / Resend** thật (Railway Trial chặn SMTP → cần Hobby+ hoặc `RESEND_API_KEY`).
-- [ ] Cấu hình **Zalo OA** thật (`ZALO_APP_ID/SECRET/REFRESH_TOKEN`) — code có sẵn, **chưa test với OA thật**.
-- [ ] Cất giữ file mật khẩu / GitHub App.
 
 ---
 

@@ -1093,6 +1093,24 @@
   </div>
 </div>
 
+<!-- Modal link cổng NCC -->
+<div id="modalNccPortal" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <h3 class="text-lg font-bold mb-1">🔗 Link cổng NCC</h3>
+    <p id="pk-name" class="text-sm text-gray-500 mb-4"></p>
+    <input id="pk-id" type="hidden"/>
+    <p class="text-xs text-gray-500 mb-2">Gửi link này cho NCC (Zalo/email) <strong>một lần</strong> — họ mở là thấy các dịch vụ đang chờ và tự xác nhận + nhập số voucher. Ai có link là vào được, đừng đăng công khai.</p>
+    <div class="flex gap-2 mb-4">
+      <input id="pk-url" readonly class="input flex-1 font-mono text-xs" onclick="this.select()"/>
+      <button onclick="copyPortalLink()" class="bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 flex-shrink-0">📋 Copy</button>
+    </div>
+    <div class="mt-2 flex gap-3 items-center justify-between">
+      <button onclick="regenPortalKey()" class="text-xs text-red-500 hover:underline">♻️ Tạo link mới (thu hồi link cũ)</button>
+      <button onclick="closeModal('modalNccPortal')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalChangeEmail" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
     <h3 class="text-lg font-bold mb-1">Kênh nhận nhắc việc</h3>
@@ -3336,6 +3354,7 @@ function renderServices(b) {
         ${editable && s.status === 'CONFIRMED' ? `<button data-s="${s.svcId}" onclick="setSvcStatus(this.dataset.s,'REQUESTED')" class="text-xs text-gray-400 hover:underline">↩ bỏ xác nhận</button>` : ''}
         ${editable && s.status === 'REQUESTED' ? `<button data-s="${s.svcId}" onclick="setSvcStatus(this.dataset.s,'CANCELLED')" class="text-xs text-gray-400 hover:underline">huỷ</button>` : ''}
       </div>
+      ${s.declined && s.status === 'REQUESTED' ? `<div class="ml-5 mt-1 text-xs bg-red-50 border border-red-200 text-red-700 rounded px-2 py-1">⛔ NCC báo không nhận (${esc(s.declined.at.slice(0,10))}): ${esc(s.declined.reason)} — cần tìm phương án thay thế</div>` : ''}
     </div>`;
   }).join('');
 
@@ -3955,6 +3974,7 @@ async function loadSuppliers() {
               <button data-id="${s.nccId}" data-n="${esc(s.name)}" onclick="openRatingModal(this.dataset.id, this.dataset.n)" class="text-xs border border-yellow-300 text-yellow-600 px-2 py-1 rounded hover:bg-yellow-50">⭐ Chấm</button>
               ${canManage ? `
               <button data-id="${s.nccId}" onclick="openSupplierModal(this.dataset.id)" class="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50">✏️ Sửa</button>
+              <button data-id="${s.nccId}" data-n="${esc(s.name)}" onclick="openPortalModal(this.dataset.id, this.dataset.n)" class="text-xs border border-teal-300 text-teal-700 px-2 py-1 rounded hover:bg-teal-50" title="Link để NCC tự xác nhận dịch vụ">🔗 Cổng${s.hasPortal ? ' ✓' : ''}</button>
               <button data-id="${s.nccId}" onclick="toggleSupplier(this.dataset.id)" class="text-xs border px-2 py-1 rounded ${s.active ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-green-300 text-green-600 hover:bg-green-50'}">${s.active ? '⏸ Ngừng' : '▶ Kích hoạt'}</button>` : ''}
             </div></td>
           </tr>`).join('')}
@@ -4008,6 +4028,34 @@ async function toggleSupplier(id) {
     toast(res.message);
     loadSuppliers();
     loadCatalogCaches();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Cổng NCC — link tự xác nhận dịch vụ ───────────────────
+async function openPortalModal(nccId, name) {
+  document.getElementById('pk-id').value = nccId;
+  document.getElementById('pk-name').textContent = name;
+  document.getElementById('pk-url').value = 'Đang tạo link...';
+  document.getElementById('modalNccPortal').classList.remove('hidden');
+  try {
+    const res = await api(`/suppliers/${nccId}/portal-key`, { method:'POST', body: JSON.stringify({}) });
+    document.getElementById('pk-url').value = res.portalUrl;
+  } catch(e) { toast(e.message, 'error'); closeModal('modalNccPortal'); }
+}
+
+async function copyPortalLink() {
+  const url = document.getElementById('pk-url').value;
+  try { await navigator.clipboard.writeText(url); toast('Đã copy link cổng NCC'); }
+  catch { document.getElementById('pk-url').select(); document.execCommand('copy'); toast('Đã copy link'); }
+}
+
+async function regenPortalKey() {
+  if (!confirm('Tạo link mới? Link cũ đã gửi cho NCC sẽ HẾT hiệu lực ngay.')) return;
+  const nccId = document.getElementById('pk-id').value;
+  try {
+    const res = await api(`/suppliers/${nccId}/portal-key`, { method:'POST', body: JSON.stringify({ regenerate: true }) });
+    document.getElementById('pk-url').value = res.portalUrl;
+    toast(res.message, 'warn');
   } catch(e) { toast(e.message, 'error'); }
 }
 

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Cổng NCC — Booking Hub</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen p-4">
+<div class="w-full max-w-2xl mx-auto">
+  <div class="text-center mb-6 mt-4">
+    <div class="text-4xl mb-2">🤝</div>
+    <h1 class="text-2xl font-bold text-gray-800">Cổng đối tác NCC</h1>
+    <p id="sub" class="text-sm text-gray-500 mt-1">Xác nhận giữ chỗ các dịch vụ được đặt</p>
+  </div>
+
+  <div id="err" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm mb-4"></div>
+  <div id="loading" class="text-center text-gray-400 text-sm py-8">Đang tải...</div>
+
+  <div id="content" class="hidden">
+    <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+      <p class="text-xs text-gray-400">Đối tác</p>
+      <p id="sp-name" class="text-lg font-bold text-gray-800"></p>
+    </div>
+
+    <h2 class="text-sm font-semibold text-gray-700 mb-2 px-1">⏳ Chờ bạn xác nhận (<span id="cnt-pending">0</span>)</h2>
+    <div id="pending" class="space-y-3 mb-6"></div>
+
+    <h2 class="text-sm font-semibold text-gray-700 mb-2 px-1">✅ Đã xác nhận — tour sắp tới (<span id="cnt-confirmed">0</span>)</h2>
+    <div id="confirmed" class="space-y-3 mb-6"></div>
+  </div>
+
+  <p class="text-center text-xs text-gray-400 mt-6 mb-4">Link này dành riêng cho bạn — vui lòng không chia sẻ.<br>Cần hỗ trợ? Liên hệ điều hành tour đã gửi link cho bạn.</p>
+</div>
+
+<!-- Modal xác nhận -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md p-6">
+    <h3 id="m-title" class="font-bold text-gray-800 mb-1"></h3>
+    <p id="m-desc" class="text-sm text-gray-500 mb-4"></p>
+    <div id="m-confirm-fields">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Số voucher / mã xác nhận của bạn *</label>
+      <input id="m-voucher" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-500 font-mono mb-3" placeholder="VD: VC-2026-0158"/>
+    </div>
+    <div id="m-decline-fields" class="hidden">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Lý do không nhận được *</label>
+      <input id="m-reason" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-500 mb-3" placeholder="VD: Hết phòng ngày này"/>
+    </div>
+    <div id="m-err" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm mb-3"></div>
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm font-semibold">Đóng</button>
+      <button id="m-btn" onclick="submitAction()" class="flex-1 text-white py-2.5 rounded-lg text-sm font-semibold"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get('key') || '';
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showErr(msg) {
+  document.getElementById('loading').classList.add('hidden');
+  const el = document.getElementById('err');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+
+async function post(path, body) {
+  const res = await fetch('/api/ncc-portal/' + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: KEY, ...body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Có lỗi xảy ra, thử lại sau');
+  return data;
+}
+
+function svcCard(s, pending) {
+  return `
+  <div class="bg-white rounded-2xl shadow-sm p-5 ${s.declined ? 'border border-red-200' : ''}">
+    <div class="flex items-start justify-between gap-2 flex-wrap mb-1">
+      <div class="min-w-0">
+        <p class="font-semibold text-gray-800">${esc(s.desc)}</p>
+        <p class="text-xs text-gray-400">${esc(s.categoryLabel)} · Tour: ${esc(s.product)}</p>
+      </div>
+      <span class="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0 ${pending ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}">${pending ? 'Chờ xác nhận' : 'Đã xác nhận'}</span>
+    </div>
+    <div class="grid grid-cols-2 gap-2 text-sm my-3">
+      <div class="bg-gray-50 rounded-lg p-2.5"><span class="text-gray-500 text-xs block">Ngày tour</span><strong>${esc(s.tourDate)}</strong></div>
+      <div class="bg-gray-50 rounded-lg p-2.5"><span class="text-gray-500 text-xs block">Số khách</span><strong>${s.pax} khách</strong></div>
+      ${s.note ? `<div class="bg-gray-50 rounded-lg p-2.5 col-span-2"><span class="text-gray-500 text-xs block">Ghi chú từ điều hành</span><strong>${esc(s.note)}</strong></div>` : ''}
+    </div>
+    ${s.declined ? `<p class="text-xs text-red-600 mb-2">⛔ Bạn đã báo không nhận (${esc(s.declined.at)}): ${esc(s.declined.reason)} — điều hành sẽ liên hệ lại. Nếu đã thu xếp được, vẫn có thể xác nhận bên dưới.</p>` : ''}
+    ${pending ? `
+    <div class="flex gap-2">
+      <button data-b="${esc(s.bookingId)}" data-s="${esc(s.svcId)}" data-d="${esc(s.desc)}" onclick="openModal(this.dataset,'confirm')"
+        class="flex-1 bg-green-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-green-500">✅ Xác nhận giữ chỗ</button>
+      <button data-b="${esc(s.bookingId)}" data-s="${esc(s.svcId)}" data-d="${esc(s.desc)}" onclick="openModal(this.dataset,'decline')"
+        class="border border-red-200 text-red-600 px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-red-50">Không nhận được</button>
+    </div>` : `
+    <p class="text-xs text-green-700 font-mono">📄 Voucher: ${esc(s.voucherNo)}${s.confirmedAt ? ` · ${esc(s.confirmedAt)}` : ''}</p>`}
+  </div>`;
+}
+
+async function load() {
+  if (!KEY) return showErr('Thiếu mã truy cập — vui lòng mở đúng link được gửi cho bạn.');
+  try {
+    const data = await post('me', {});
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('err').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+    document.getElementById('sp-name').textContent = data.supplier.name;
+    document.getElementById('cnt-pending').textContent = data.pending.length;
+    document.getElementById('cnt-confirmed').textContent = data.confirmed.length;
+    document.getElementById('pending').innerHTML = data.pending.length
+      ? data.pending.map(s => svcCard(s, true)).join('')
+      : '<p class="text-sm text-gray-400 bg-white rounded-2xl shadow-sm p-5">🎉 Không có dịch vụ nào đang chờ — cảm ơn bạn!</p>';
+    document.getElementById('confirmed').innerHTML = data.confirmed.length
+      ? data.confirmed.map(s => svcCard(s, false)).join('')
+      : '<p class="text-sm text-gray-400 bg-white rounded-2xl shadow-sm p-5">Chưa có dịch vụ đã xác nhận sắp tới.</p>';
+  } catch (e) { showErr(e.message); }
+}
+
+let ACTION = null; // {bookingId, svcId, type}
+function openModal(ds, type) {
+  ACTION = { bookingId: ds.b, svcId: ds.s, type };
+  document.getElementById('m-title').textContent = type === 'confirm' ? '✅ Xác nhận giữ chỗ' : '⛔ Báo không nhận được';
+  document.getElementById('m-desc').textContent = ds.d;
+  document.getElementById('m-confirm-fields').classList.toggle('hidden', type !== 'confirm');
+  document.getElementById('m-decline-fields').classList.toggle('hidden', type !== 'decline');
+  document.getElementById('m-err').classList.add('hidden');
+  document.getElementById('m-voucher').value = '';
+  document.getElementById('m-reason').value = '';
+  const btn = document.getElementById('m-btn');
+  btn.textContent = type === 'confirm' ? 'Xác nhận' : 'Gửi báo cáo';
+  btn.className = 'flex-1 text-white py-2.5 rounded-lg text-sm font-semibold ' + (type === 'confirm' ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500');
+  document.getElementById('modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById(type === 'confirm' ? 'm-voucher' : 'm-reason').focus(), 60);
+}
+function closeModal() { document.getElementById('modal').classList.add('hidden'); ACTION = null; }
+
+async function submitAction() {
+  if (!ACTION) return;
+  const errEl = document.getElementById('m-err');
+  errEl.classList.add('hidden');
+  const btn = document.getElementById('m-btn');
+  btn.disabled = true;
+  try {
+    if (ACTION.type === 'confirm') {
+      await post('confirm', { bookingId: ACTION.bookingId, svcId: ACTION.svcId,
+        voucherNo: document.getElementById('m-voucher').value });
+    } else {
+      await post('decline', { bookingId: ACTION.bookingId, svcId: ACTION.svcId,
+        reason: document.getElementById('m-reason').value });
+    }
+    closeModal();
+    load();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.remove('hidden');
+  } finally { btn.disabled = false; }
+}
+
+load();
+</script>
+</body>
+</html>
