@@ -213,7 +213,7 @@
       </div>
 
       <!-- Việc của tôi -->
-      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+      <div id="cardMyTasks" class="bg-white rounded-xl shadow-sm p-6 mb-6 scroll-mt-4 transition-shadow">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-gray-700">🎯 Việc của tôi</h3>
           <span id="myTasksSummary" class="text-xs text-gray-400"></span>
@@ -5236,7 +5236,7 @@ async function loadClSummary() {
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  if (TOKEN && USER) showApp();
+  if (TOKEN && USER) { showApp(); handleDeepLink(); }
   document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
   document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
   document.addEventListener('click', e => {
@@ -5246,6 +5246,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   initPWA();
 });
+
+// ── Deep-link từ shortcut PWA (?view=tasks) → cuộn tới "Việc của tôi" ──
+function handleDeepLink() {
+  const view = new URLSearchParams(location.search).get('view');
+  if (view !== 'tasks') return;
+  // Xoá param để refresh/back không kích lại
+  history.replaceState(null, '', location.pathname);
+  showPage('dashboard');
+  // Chờ dashboard render xong rồi cuộn + làm nổi khối
+  setTimeout(() => {
+    const card = document.getElementById('cardMyTasks');
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.classList.add('ring-2', 'ring-blue-500');
+    setTimeout(() => card.classList.remove('ring-2', 'ring-blue-500'), 2500);
+  }, 400);
+}
 
 // ── PWA: đăng ký service worker + nút cài app ────────────────
 function initPWA() {
