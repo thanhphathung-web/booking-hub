@@ -160,6 +160,9 @@
       </a>
     </nav>
     <div class="p-4 border-t border-blue-800 space-y-2">
+      <a href="/huongdan" target="_blank" class="text-xs text-blue-300 hover:text-white transition flex items-center gap-2">
+        <span>❓</span><span>Hướng dẫn sử dụng</span>
+      </a>
       <button onclick="openChangePass(USER.username)" class="text-xs text-blue-300 hover:text-white transition flex items-center gap-2">
         <span>🔑</span><span>Đổi mật khẩu</span>
       </button>
@@ -1359,13 +1362,13 @@ async function loadDashboard(days, from, to) {
       { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
       { label:'Sắp KH chưa thu đủ',value: dueSoonUnpaid ?? 0,  color:'bg-rose-700',   icon:'⏳', filter:null, filterPaid:'false' },
       { label:'NCC chưa xác nhận (7N)',value: unconfirmedSoon ?? 0, color:'bg-amber-600', icon:'🤝', filter:null },
-      { label:'NCC báo không nhận',value: declinedServices ?? 0, color:'bg-red-800',  icon:'⛔', filter:null },
+      { label:'NCC báo không nhận',value: declinedServices ?? 0, color:'bg-red-800',  icon:'⛔', filter:null, action:'gotoOpsAttention()' },
       { label:'Sự cố đang mở',     value: openIncidents ?? 0,  color:'bg-red-700',    icon:'🚨', filter:'IN_PROGRESS' },
       { label:'Chờ duyệt huỷ',     value: pendingCancels ?? 0, color:'bg-gray-700',   icon:'🛑', filter:null },
     ];
     document.getElementById('statCards').innerHTML = cards.map(c => `
-      <div onclick="${c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
-        class="${c.color} text-white rounded-xl p-5 ${c.filter || c.filterPaid ? 'cursor-pointer hover:opacity-90' : ''} transition">
+      <div onclick="${c.action ? c.action : c.filter ? `filterByStatus('${c.filter}')` : c.filterPaid ? `filterByPaid('${c.filterPaid}')` : ''}"
+        class="${c.color} text-white rounded-xl p-5 ${c.action || c.filter || c.filterPaid ? 'cursor-pointer hover:opacity-90' : ''} transition">
         <div class="text-2xl mb-1">${c.icon}</div>
         <div class="text-3xl font-bold">${c.value}</div>
         <div class="text-sm opacity-80 mt-1">${c.label}</div>
@@ -4606,6 +4609,12 @@ async function loadOpsBoard() {
   } catch(e) { document.getElementById('opsboard-table').innerHTML = `<p class="text-red-500 text-sm">${e.message}</p>`; }
 }
 
+// Card ⛔ trên dashboard → Ops Board lọc sẵn "Cần chú ý"
+function gotoOpsAttention() {
+  showPage('opsboard');
+  setTimeout(() => filterOpsBoard('attn'), 50); // đợi loadOpsBoard gắn xong DOM
+}
+
 function filterOpsBoard(f) {
   OB_FILTER = f;
   document.querySelectorAll('.ob-filter-btn').forEach(b => {
@@ -4674,7 +4683,7 @@ function renderOpsBoard() {
           const total     = cl.length;
           return `<tr class="${rowBg} hover:bg-blue-50 cursor-pointer transition" onclick="showDetail('${b.bookingId}')">
             <td class="px-4 py-3">
-              <p class="font-mono text-xs text-blue-700 font-semibold">${b.bookingId}</p>
+              <p class="font-mono text-xs text-blue-700 font-semibold">${b.bookingId}${obIssueIcons(b)}</p>
               <p class="text-gray-700 truncate max-w-xs">${esc(b.product)}</p>
             </td>
             <td class="px-4 py-3 whitespace-nowrap">
@@ -4697,7 +4706,19 @@ function renderOpsBoard() {
 }
 
 function obHasIssue(b, today) {
-  return (b.checklist||[]).some(i => !i.done && i.deadline && i.deadline < today);
+  return (b.checklist||[]).some(i => !i.done && i.deadline && i.deadline < today)
+    || (b.services||[]).some(s => s.status === 'REQUESTED' && s.declined)   // NCC báo không nhận
+    || (b.incidents||[]).some(i => i.status === 'OPEN')                     // sự cố đang mở
+    || !!b.cancelRequest;                                                   // chờ duyệt huỷ
+}
+
+// Cờ cảnh báo ngoài checklist — hiện cạnh mã đơn trên Ops Board
+function obIssueIcons(b) {
+  let s = '';
+  if ((b.services||[]).some(x => x.status === 'REQUESTED' && x.declined)) s += ' <span title="NCC báo không nhận dịch vụ">⛔</span>';
+  if ((b.incidents||[]).some(x => x.status === 'OPEN'))                   s += ' <span title="Sự cố đang mở">🚨</span>';
+  if (b.cancelRequest)                                                    s += ' <span title="Chờ duyệt huỷ">🛑</span>';
+  return s;
 }
 
 function obPhaseCell(cl, phase, today) {

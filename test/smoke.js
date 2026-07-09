@@ -466,6 +466,8 @@ async function login(username, password) {
       check('X-Content-Type-Options: nosniff', res.headers.get('x-content-type-options') === 'nosniff');
       check('X-Frame-Options: SAMEORIGIN', res.headers.get('x-frame-options') === 'SAMEORIGIN');
       check('Referrer-Policy có đặt', !!res.headers.get('referrer-policy'));
+      r = await req('GET', '/huongdan');
+      check('trang /huongdan phục vụ được', r.status === 200);
     }
 
     console.log('\n— Chương trình tour + rooming —');

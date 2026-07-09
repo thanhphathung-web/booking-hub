@@ -101,6 +101,10 @@ app.get('/danhgia', (req, res) =>
 app.get('/ncc', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'ncc.html')));
 
+// Sổ tay hướng dẫn sử dụng cho nhân viên (tĩnh, không chứa dữ liệu)
+app.get('/huongdan', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'huongdan.html')));
+
 // ── SPA fallback — serve admin panel ─────────────────────
 app.get('/{*splat}', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'index.html')));

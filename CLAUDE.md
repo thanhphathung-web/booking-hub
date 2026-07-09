@@ -489,7 +489,7 @@ router.post('/something', ...requirePerm('bookings:create'), handler);
 node server.js
 # → http://localhost:3000
 
-# Smoke test (198 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
+# Smoke test (199 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
 npm test
 
 # Test API nhanh
@@ -568,6 +568,8 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Tự đổi mật khẩu (mọi role, bắt buộc mật khẩu cũ) — nút 🔑 cạnh Đăng xuất; CEO đổi cho người khác không cần pass cũ
 - [x] Security headers toàn app (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS khi HTTPS)
 - [x] Phiếu thu in cho khách per lần thu (nút 🖨 trong card thanh toán) — số phiếu, số tiền bằng chữ (docSoVN chuẩn kế toán), tổng/đã thu/còn lại, chỗ ký 2 bên
+- [x] Ops Board "Cần chú ý" gom đủ: checklist quá hạn + NCC báo không nhận (⛔) + sự cố mở (🚨) + chờ duyệt huỷ (🛑) — icon cạnh mã đơn; card ⛔ dashboard bấm vào là tới
+- [x] Sổ tay hướng dẫn sử dụng `/huongdan` (public/huongdan.html — tĩnh, không dữ liệu; link ❓ cuối sidebar): quy trình tour A→Z, việc theo vai trò, cổng NCC, trang khách, FAQ
 - [x] PWA: cài app trên điện thoại (`manifest.webmanifest` + `public/sw.js` + icon sinh sẵn `public/icons/`), mở tức thì, offline trả app shell. SW **không cache /api/** (data booking/tiền luôn tươi), network-first cho navigation, stale-while-revalidate cho static. Nút "📲 Cài app" hiện khi trình duyệt cho phép (beforeinstallprompt). Sinh lại icon: `node scripts/gen-icons.js`. Đổi shell → bump `CACHE_VERSION` trong sw.js
 
 ## Tính năng chưa có (backlog)

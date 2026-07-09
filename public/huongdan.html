@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hướng dẫn sử dụng — Booking Hub</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  h2 { scroll-margin-top: 80px; }
+  .step { counter-increment: step; }
+  .step::before { content: counter(step); }
+</style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+
+<header class="bg-blue-900 text-white sticky top-0 z-10 shadow">
+  <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+    <div class="font-bold">🏝️ Booking Hub — Sổ tay sử dụng</div>
+    <nav class="text-xs flex gap-3 flex-wrap opacity-90">
+      <a href="#batdau" class="hover:underline">Bắt đầu</a>
+      <a href="#quytrinh" class="hover:underline">Quy trình tour</a>
+      <a href="#vaitro" class="hover:underline">Theo vai trò</a>
+      <a href="#nccportal" class="hover:underline">Cổng NCC</a>
+      <a href="#khach" class="hover:underline">Trang cho khách</a>
+      <a href="#faq" class="hover:underline">Hỏi đáp</a>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 py-8 space-y-10">
+
+<section id="batdau">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">🚀 Bắt đầu</h2>
+  <div class="bg-white rounded-xl shadow-sm p-6 space-y-3 text-sm">
+    <p><strong>Đăng nhập:</strong> mở địa chỉ hệ thống trên trình duyệt, nhập tên đăng nhập + mật khẩu được cấp. Sai mật khẩu 5 lần trong 15 phút sẽ bị khoá tạm 15 phút.</p>
+    <p><strong>📲 Cài app lên điện thoại:</strong> mở trang bằng Chrome/Safari trên điện thoại → bấm nút <strong>"📲 Cài app"</strong> góc dưới phải (hoặc menu trình duyệt → "Thêm vào màn hình chính"). Mở app rồi <em>giữ tay lên icon</em> sẽ có lối tắt <strong>"Việc của tôi"</strong>.</p>
+    <p><strong>🔑 Đổi mật khẩu:</strong> nút "Đổi mật khẩu" cuối thanh menu trái — cần nhập đúng mật khẩu hiện tại. <em>Quên mật khẩu?</em> Báo CEO cấp lại trong Quản lý User.</p>
+    <p><strong>🔔 Nhận nhắc việc:</strong> mỗi sáng 07:30 hệ thống gửi tổng hợp việc của bạn qua email/Zalo. Để nhận được: nhờ CEO gắn email + Zalo ID trong Quản lý User → "🔔 Kênh nhắc" (Zalo cần follow OA công ty trước).</p>
+  </div>
+</section>
+
+<section id="quytrinh">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">🔄 Quy trình 1 tour từ A → Z</h2>
+  <div class="bg-white rounded-xl shadow-sm p-6">
+    <ol class="space-y-4 text-sm" style="counter-reset: step">
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>Nhận đơn (NEW):</strong> CS bấm <em>"Tạo Booking mới"</em> (đơn từ website CTY2 tự chảy vào). Chọn sản phẩm tour / chuyến khởi hành nếu có — hệ thống tự tính tiền và giữ chỗ, hết chỗ sẽ báo ngay (chống overbooking).</div></li>
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>Xác nhận (CONFIRMED):</strong> TPDH kiểm tra rồi chuyển trạng thái. Hệ thống tự sinh <em>checklist chuẩn bị</em> có deadline và <strong>tự gửi email xác nhận cho khách</strong>.</div></li>
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>Chuẩn bị tour:</strong> trong trang chi tiết booking làm lần lượt:
+          <ul class="list-disc ml-5 mt-1 space-y-1 text-gray-600">
+            <li><strong>Hồ sơ hành khách</strong> — tên đúng giấy tờ, y tế/ăn kiêng, liên hệ khẩn (nuôi manifest + thẻ SOS).</li>
+            <li><strong>Đặt dịch vụ NCC</strong> — ghi từng dịch vụ cần đặt (xe, KS, ăn...). Gắn NCC có email là họ <em>tự nhận được yêu cầu</em> và xác nhận qua <a class="text-teal-700 underline" href="#nccportal">cổng NCC</a>. Chỉ tin dịch vụ đã có ✅ + số voucher.</li>
+            <li><strong>Chương trình tour + Rooming list</strong> — soạn lịch trình ngày-by-ngày, phân phòng; in bản khách khi cần.</li>
+            <li><strong>Phân công NVDH</strong> (+WC nếu tour wellness) — hệ thống tự báo trùng lịch và nhắn người được phân công.</li>
+            <li><strong>Thu tiền</strong> — KETOAN ghi từng lần thu (cọc/trả nốt), bấm 🖨 in <em>phiếu thu</em> đưa khách. Thu đủ hệ thống tự đánh dấu.</li>
+          </ul></div></li>
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>🚦 Cổng Go/No-Go:</strong> trước khởi hành xem bảng chấm sẵn sàng trên trang chi tiết. Còn mục đỏ (thiếu tên khách, chưa thu đủ, NCC chưa xác nhận, chưa có NVDH...) → xử lý xong mới chuyển <strong>IN_PROGRESS</strong>. Khách được <strong>tự động nhắc trước 3 ngày</strong> qua email.</div></li>
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>Trong tour (IN_PROGRESS):</strong> NVDH gửi <em>báo cáo ngày</em>, ghi <em>sổ sự cố</em> khi có việc (sự cố nặng tự báo CEO/TPDH ngay), in <em>🆘 thẻ SOS</em> mang theo.</div></li>
+      <li class="flex gap-3"><span class="step w-6 h-6 rounded-full bg-blue-900 text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"></span>
+        <div><strong>Sau tour (COMPLETED):</strong> ghi đủ <em>sổ chi phí thực tế</em>, <em>chấm điểm NCC</em>, tick mục quyết toán (PT-08) rồi mới đóng tour được. Hệ thống <strong>tự gửi email cảm ơn kèm link đánh giá</strong>; điểm sao/NPS chảy vào báo cáo Post Analysis.</div></li>
+    </ol>
+    <p class="text-xs text-gray-400 mt-4">❗ Huỷ booking cần 2 người: một người gửi <em>yêu cầu huỷ + lý do</em>, CEO/TPDH <em>khác</em> duyệt — không ai huỷ đơn phương được.</p>
+  </div>
+</section>
+
+<section id="vaitro">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">👥 Việc chính theo vai trò</h2>
+  <div class="grid sm:grid-cols-2 gap-4 text-sm">
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">CS — Chăm sóc khách</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Tạo booking mới, điền đủ SĐT (hệ thống tự nhận khách quen/VIP)</li><li>Gửi khách mã đơn + link tra cứu</li><li>Hoàn thiện thông tin khách theo checklist BC</li></ul></div>
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">TPDH — Trưởng phòng điều hành</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Xác nhận đơn, phân công NVDH/WC</li><li>Quản lý NCC + gửi link cổng NCC</li><li>Theo dõi Ops Board (lọc "Cần chú ý"), duyệt yêu cầu huỷ</li></ul></div>
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">NVDH — Điều hành tour</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Xem "Việc của tôi" mỗi sáng, tick checklist đúng hạn</li><li>Hồ sơ hành khách, đặt dịch vụ NCC, chương trình tour</li><li>Trong tour: báo cáo ngày, sổ sự cố; sau tour: chi phí + chấm NCC</li></ul></div>
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">KETOAN — Kế toán</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Ghi lần thu tiền khách + in phiếu thu</li><li>Sổ công nợ NCC: hạn trả, đánh dấu đã trả</li><li>Báo cáo Doanh thu + card "Sắp KH chưa thu đủ"</li></ul></div>
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">PM — Sản phẩm</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Sản phẩm tour + cost sheet dự toán</li><li>Lịch khởi hành + số chỗ từng chuyến</li></ul></div>
+    <div class="bg-white rounded-xl shadow-sm p-5"><p class="font-bold mb-1">CEO</p>
+      <ul class="list-disc ml-4 space-y-1 text-gray-600"><li>Toàn quyền + Quản lý User, Audit Log, sức khoẻ hệ thống</li><li>Duyệt huỷ, duyệt hiển thị đánh giá khách</li><li>Post Analysis: lãi/lỗ tour, hiệu quả sản phẩm, xếp hạng NCC</li></ul></div>
+  </div>
+</section>
+
+<section id="nccportal">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">🤝 Cổng NCC — nhà cung cấp tự xác nhận</h2>
+  <div class="bg-white rounded-xl shadow-sm p-6 text-sm space-y-2">
+    <p><strong>1.</strong> Trang <em>NCC</em> → bấm <strong>"🔗 Cổng"</strong> ở nhà cung cấp → Copy link (hoặc "📧 Gửi qua email") — gửi cho NCC <strong>một lần duy nhất</strong> qua Zalo/email.</p>
+    <p><strong>2.</strong> NCC mở link là thấy mọi dịch vụ đang chờ → bấm <strong>Xác nhận giữ chỗ + nhập số voucher</strong>, hoặc <strong>"Không nhận được"</strong> kèm lý do.</p>
+    <p><strong>3.</strong> NCC có email thì mỗi lần mình thêm dịch vụ gắn họ, hệ thống <em>tự gửi email yêu cầu</em> kèm link — không cần gọi điện nhắc.</p>
+    <p><strong>4.</strong> NCC báo không nhận → card đỏ <strong>"⛔ NCC báo không nhận"</strong> trên Dashboard + tin nhắn ngay cho CEO/TPDH → tìm phương án thay thế.</p>
+    <p class="text-xs text-gray-400">Lo lộ link? Bấm "♻️ Tạo link mới" — link cũ hết hiệu lực ngay. NCC không bao giờ thấy tên/SĐT khách hay số tiền.</p>
+  </div>
+</section>
+
+<section id="khach">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">🧳 Trang dành cho khách (không cần tài khoản)</h2>
+  <div class="bg-white rounded-xl shadow-sm p-6 text-sm space-y-2">
+    <p><strong>/tracuu</strong> — khách nhập <em>mã đơn + SĐT đặt tour</em> để xem trạng thái, tiền đã đóng/còn lại. CS gửi link này kèm mã đơn khi chốt booking.</p>
+    <p><strong>/danhgia</strong> — khách chấm sao + NPS sau tour (link tự chèn trong email cảm ơn). Đánh giá tốt CEO/TPDH duyệt mới hiện công khai; đánh giá thấp tự báo quản lý để chăm sóc lại.</p>
+    <p>Email tự động cho khách: <em>xác nhận đơn</em> (khi CONFIRMED) → <em>nhắc trước 3 ngày</em> → <em>cảm ơn + mời đánh giá</em> (sau tour). Xem/gửi lại trong card "💌 Giao tiếp khách" ở chi tiết booking.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <h2 class="text-xl font-bold text-blue-900 mb-3">❓ Hỏi đáp nhanh</h2>
+  <div class="bg-white rounded-xl shadow-sm p-6 text-sm divide-y divide-gray-100">
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Vì sao không chuyển được sang "Đang thực hiện"?</summary><p class="mt-1 text-gray-600">Cổng Go/No-Go còn mục đỏ (thiếu tên khách, chưa thu đủ tiền, NCC chưa xác nhận, chưa phân công NVDH, xe/KS/bảo hiểm chưa tick...). Xử lý hết hoặc CEO/TPDH xác nhận vượt cảnh báo.</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Vì sao không đóng được tour (COMPLETED)?</summary><p class="mt-1 text-gray-600">Mục quyết toán PT-08 trong checklist chưa tick — ghi đủ chi phí rồi tick.</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Muốn huỷ booking?</summary><p class="mt-1 text-gray-600">Bấm "Yêu cầu huỷ" + lý do trên chi tiết booking → CEO/TPDH <em>khác người yêu cầu</em> bấm duyệt. Chỗ trên chuyến khởi hành tự trả lại.</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Ghi nhầm lần thu tiền?</summary><p class="mt-1 text-gray-600">KETOAN/CEO bấm ✕ cạnh lần thu để xoá — số đã thu tự tính lại.</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Khách đổi ngày khởi hành?</summary><p class="mt-1 text-gray-600">Sửa booking → đổi ngày — deadline checklist chưa làm tự tính lại theo ngày mới.</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Quên mật khẩu?</summary><p class="mt-1 text-gray-600">Báo CEO: Quản lý User → Đổi mật khẩu (CEO không cần mật khẩu cũ của bạn).</p></details>
+    <details class="py-2"><summary class="font-semibold cursor-pointer">Mất dữ liệu thì sao?</summary><p class="mt-1 text-gray-600">Hệ thống tự backup 02:00 hằng đêm qua email + CEO tải backup tay được trong Audit Log. Có script khôi phục khi cần.</p></details>
+  </div>
+</section>
+
+<p class="text-center text-xs text-gray-400 pb-8">Booking Hub — hệ sinh thái Du lịch &amp; Wellness · Trang này không chứa dữ liệu khách, chỉ là hướng dẫn.</p>
+</main>
+</body>
+</html>
