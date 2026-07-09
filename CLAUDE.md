@@ -4,6 +4,10 @@
 Đây là briefing cho Claude Code để hiểu ngay project mà không cần hỏi lại.
 Đọc file này trước khi làm bất cứ thứ gì.
 
+**Quyết định thiết kế (tại sao xây như vậy):** xem `DECISIONS.md` — đọc trước khi định
+refactor/"sửa lại cho đúng" bất kỳ pattern nào trông kỳ lạ (paid suy ra, seatsSold không lưu,
+decline không đổi status, SW không cache /api/...).
+
 ---
 
 ## Business Context
