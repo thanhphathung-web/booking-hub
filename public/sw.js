@@ -6,7 +6,7 @@
  *  - Bỏ qua mọi request không phải GET và cross-origin (Tailwind CDN...) → để trình duyệt tự xử lý.
  * Đổi CACHE_VERSION mỗi lần sửa shell để buộc client lấy bản mới.
  */
-const CACHE_VERSION = 'bh-v2';
+const CACHE_VERSION = 'bh-v3';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
