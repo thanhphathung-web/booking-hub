@@ -90,9 +90,12 @@ router.get('/stats', requireAuth, async (req, res) => {
     const activeBookings = await dbAsync.find('bookings', { status: { $nin: ['CANCELLED', 'COMPLETED'] } });
     const openIncidents = activeBookings.reduce((n, b) =>
       n + (b.incidents || []).filter(i => i.status === 'OPEN').length, 0);
+    // NCC báo không nhận được dịch vụ (qua cổng NCC) mà chưa xử lý — cần tìm phương án thay thế
+    const declinedServices = activeBookings.reduce((n, b) =>
+      n + (b.services || []).filter(s => s.status === 'REQUESTED' && s.declined).length, 0);
     // Yêu cầu huỷ đang chờ người thứ hai duyệt
     const pendingCancels = await dbAsync.count('bookings', { 'cancelRequest.by': { $exists: true } });
-    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents, pendingCancels });
+    res.json({ total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents, declinedServices, pendingCancels });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -733,6 +736,8 @@ router.post('/:id/services', ...requirePerm('bookings:update'), async (req, res)
       { $set: { updatedAt: now }, $push: { services: svc } });
     await dbAsync.insert('activity', { type: 'SVC_ADDED', bookingId: req.params.id,
       to: svc.desc, by: req.user.username, at: now });
+    // Gắn NCC → email yêu cầu giữ chỗ cho NCC ngay (kèm link cổng nếu có) — không chặn response
+    notifier.notifySupplierNewRequest(booking, svc).catch(() => {});
     res.status(201).json({ message: 'Đã thêm dịch vụ cần đặt', service: svc });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

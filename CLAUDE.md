@@ -188,7 +188,8 @@ GET    /api/bookings             query: ?status=&type=&search=
 GET    /api/bookings/stats       → {total, new, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent,
                                     dueSoonUnpaid (tour KH trong 3 ngày chưa thu đủ — card đỏ trên dashboard),
                                     unconfirmedSoon (tour KH trong 7 ngày còn dịch vụ NCC chưa xác nhận — card 🤝),
-                                    openIncidents (sự cố còn mở trên tour chưa đóng — card đỏ 🚨)}
+                                    openIncidents (sự cố còn mở trên tour chưa đóng — card đỏ 🚨),
+                                    declinedServices (dịch vụ NCC báo không nhận qua cổng NCC, chưa xử lý — card ⛔)}
 GET    /api/bookings/:id
 POST   /api/bookings             body: booking object
 PATCH  /api/bookings/:id         sửa product/tourDate/pax/customer/specialReqs/wellness (bookings:update;
@@ -214,6 +215,8 @@ POST   /api/bookings/:id/passengers          body: {fullName*, phone?, gender?, 
 PATCH  /api/bookings/:id/passengers/:paxId   sửa 1 hành khách (bookings:update)
 DELETE /api/bookings/:id/passengers/:paxId   xoá 1 hành khách (bookings:update)
 POST   /api/bookings/:id/services            body: {category, desc*, nccId?, note?} → status REQUESTED (bookings:update)
+                                             gắn nccId → tự email yêu cầu giữ chỗ cho NCC (kèm link cổng nếu có portalKey;
+                                             fire-and-forget qua notifier.notifySupplierNewRequest, skip êm)
 PATCH  /api/bookings/:id/services/:svcId     body: {status?, voucherNo?, desc?, category?, nccId?, note?}
                                              status=CONFIRMED tự ghi confirmedBy/At; chống lỗi "tưởng đã đặt"
 DELETE /api/bookings/:id/services/:svcId     xoá 1 dịch vụ (bookings:update)
@@ -249,7 +252,9 @@ POST   /api/bookings/:id/daily-report     body: {date?, summary, groupStatus, in
 ```
 GET    /api/users
 POST   /api/users                body: {username, password, role, name, company}
-PATCH  /api/users/:username/password  body: {newPassword}
+PATCH  /api/users/:username/password  body: {newPassword, oldPassword?} — CEO đổi cho người khác không cần
+                                      oldPassword; TỰ đổi của mình (mọi role, kể cả CEO) bắt buộc oldPassword đúng.
+                                      UI: nút "🔑 Đổi mật khẩu" cạnh Đăng xuất (mọi role)
 PATCH  /api/users/:username/email     body: {email} — CEO hoặc chính chủ
 PATCH  /api/users/:username/notify    body: {email, zaloId} — kênh nhắc việc, CEO hoặc chính chủ
 PATCH  /api/users/:username/toggle    → khoá/mở khoá
@@ -370,8 +375,9 @@ DELETE /api/suppliers/:id        (CEO only)
 
 ### Cổng NCC (portal cho NCC tự xác nhận dịch vụ — không cần đăng nhập)
 ```
-POST /api/suppliers/:id/portal-key  (ncc:manage — CEO/TPDH) body: {regenerate?} → {portalKey, portalUrl}
-                                    lần đầu tạo key (crypto 24 ký tự URL-safe); regenerate=true = thu hồi link cũ
+POST /api/suppliers/:id/portal-key  (ncc:manage — CEO/TPDH) body: {regenerate?, sendEmail?} → {portalKey, portalUrl, emailResult}
+                                    lần đầu tạo key (crypto 24 ký tự URL-safe); regenerate=true = thu hồi link cũ;
+                                    sendEmail=true = email link thẳng cho NCC (skip êm nếu thiếu email/mail)
 POST /api/ncc-portal/me       (CÔNG KHAI; rate limit 60/15min/IP) body: {key}
                               → {supplier {name,category,contact}, pending[], confirmed[]} — dịch vụ gắn nccId
                               trên booking còn sống (NEW/CONFIRMED/IN_PROGRESS); CHỈ trường an toàn
@@ -483,7 +489,7 @@ router.post('/something', ...requirePerm('bookings:create'), handler);
 node server.js
 # → http://localhost:3000
 
-# Smoke test (186 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
+# Smoke test (198 case, server thật + DB tạm qua env DATA_DIR, không đụng data/)
 npm test
 
 # Test API nhanh
@@ -558,6 +564,10 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 - [x] Lịch khởi hành + quản lý số chỗ (departures/inventory): bán theo chuyến có ngày + seatsTotal, seatsSold tính tự động từ booking (huỷ tự trả chỗ), chống overbooking; đặt booking theo chuyến tự snapshot ngày/giá
 - [x] Đánh giá / NPS sau tour: khách gửi qua trang công khai /danhgia (khớp mã đơn + SĐT), duyệt hiển thị + trả lời; đánh giá tệ tự báo CEO/TPDH + ghi note; gắn avgStars/NPS vào Post Analysis
 - [x] Cổng NCC: link riêng per NCC (/ncc?key=...) để nhà cung cấp tự xác nhận giữ chỗ + nhập voucher hoặc báo không nhận (cờ đỏ + báo real-time CEO/TPDH); CEO/TPDH tạo/thu hồi link từ bảng NCC
+- [x] Email tự động cho NCC khi thêm dịch vụ gắn họ (kèm link cổng) + nút "📧 Gửi link qua email" trong modal cổng NCC + card dashboard "⛔ NCC báo không nhận"
+- [x] Tự đổi mật khẩu (mọi role, bắt buộc mật khẩu cũ) — nút 🔑 cạnh Đăng xuất; CEO đổi cho người khác không cần pass cũ
+- [x] Security headers toàn app (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS khi HTTPS)
+- [x] Phiếu thu in cho khách per lần thu (nút 🖨 trong card thanh toán) — số phiếu, số tiền bằng chữ (docSoVN chuẩn kế toán), tổng/đã thu/còn lại, chỗ ký 2 bên
 - [x] PWA: cài app trên điện thoại (`manifest.webmanifest` + `public/sw.js` + icon sinh sẵn `public/icons/`), mở tức thì, offline trả app shell. SW **không cache /api/** (data booking/tiền luôn tươi), network-first cho navigation, stale-while-revalidate cho static. Nút "📲 Cài app" hiện khi trình duyệt cho phép (beforeinstallprompt). Sinh lại icon: `node scripts/gen-icons.js`. Đổi shell → bump `CACHE_VERSION` trong sw.js
 
 ## Tính năng chưa có (backlog)

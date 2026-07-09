@@ -29,6 +29,14 @@ Nhà cung cấp nhận link riêng `/ncc?key=<token>` (CEO/TPDH tạo từ bản
 
 Bảo mật: key crypto 24 ký tự, POST để key không vào access log, chỉ trả trường an toàn (không tên/SĐT khách, không tiền), regenerate = thu hồi link cũ ngay. **`npm test` → 186 pass, 0 fail** (+16 case cổng NCC).
 
+### Đợt cải thiện tiếp (khối tự trị 2026-07-08/09) — 4 nhóm
+1. **Khép kín vòng Cổng NCC**: thêm dịch vụ gắn NCC → tự email yêu cầu giữ chỗ cho NCC kèm link cổng (`notifier.notifySupplierNewRequest`, skip êm); nút "📧 Gửi link qua email" trong modal cổng (`portal-key` body `{sendEmail:true}` → `emailResult`); card dashboard **"⛔ NCC báo không nhận"** (`stats.declinedServices`).
+2. **Tự đổi mật khẩu an toàn**: PATCH password — tự đổi (mọi role, kể cả CEO) bắt buộc `oldPassword` đúng (401 nếu sai); CEO đổi cho người khác không cần. UI: nút 🔑 cạnh Đăng xuất, modal thêm ô "Mật khẩu hiện tại" khi tự đổi.
+3. **Security headers** (server.js middleware): nosniff, X-Frame-Options SAMEORIGIN, Referrer-Policy, Permissions-Policy, HSTS khi HTTPS.
+4. **Phiếu thu in cho khách**: nút 🖨 per lần thu trong card thanh toán → phiếu thu chuẩn kế toán (số phiếu, ngày, người nộp, lý do, hình thức, **số tiền bằng chữ** — hàm `docSoVN` đã test mốt/lăm/lẻ/nghìn/triệu/tỷ, tổng/đã thu/còn lại, chỗ ký 2 bên).
+
+**`npm test` → 198 pass, 0 fail** (+12 case). Verify Chrome: card ⛔ trên dashboard, modal đổi pass (sai old → báo lỗi, đúng old → login pass mới OK), nội dung phiếu thu đủ 7 mục.
+
 ### PWA — Cài app trên điện thoại + offline shell
 Commit `5a0497b` — đã push lên `origin/master`.
 

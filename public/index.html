@@ -159,7 +159,10 @@
         <span>✅</span><span>Checklist</span>
       </a>
     </nav>
-    <div class="p-4 border-t border-blue-800">
+    <div class="p-4 border-t border-blue-800 space-y-2">
+      <button onclick="openChangePass(USER.username)" class="text-xs text-blue-300 hover:text-white transition flex items-center gap-2">
+        <span>🔑</span><span>Đổi mật khẩu</span>
+      </button>
       <button onclick="doLogout()" class="text-xs text-blue-300 hover:text-white transition flex items-center gap-2">
         <span>←</span><span>Đăng xuất</span>
       </button>
@@ -1100,10 +1103,12 @@
     <p id="pk-name" class="text-sm text-gray-500 mb-4"></p>
     <input id="pk-id" type="hidden"/>
     <p class="text-xs text-gray-500 mb-2">Gửi link này cho NCC (Zalo/email) <strong>một lần</strong> — họ mở là thấy các dịch vụ đang chờ và tự xác nhận + nhập số voucher. Ai có link là vào được, đừng đăng công khai.</p>
-    <div class="flex gap-2 mb-4">
+    <div class="flex gap-2 mb-3">
       <input id="pk-url" readonly class="input flex-1 font-mono text-xs" onclick="this.select()"/>
       <button onclick="copyPortalLink()" class="bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-teal-600 flex-shrink-0">📋 Copy</button>
     </div>
+    <button onclick="emailPortalLink()" class="w-full border border-teal-300 text-teal-700 py-2 rounded-lg text-sm font-semibold hover:bg-teal-50 mb-1">📧 Gửi link qua email cho NCC</button>
+    <p class="text-xs text-gray-400 mb-3">Mẹo: NCC có email thì mỗi lần thêm dịch vụ gắn họ, hệ thống tự email yêu cầu giữ chỗ kèm link này.</p>
     <div class="mt-2 flex gap-3 items-center justify-between">
       <button onclick="regenPortalKey()" class="text-xs text-red-500 hover:underline">♻️ Tạo link mới (thu hồi link cũ)</button>
       <button onclick="closeModal('modalNccPortal')" class="border border-gray-300 px-5 py-2 rounded-lg text-gray-600 hover:bg-gray-50">Đóng</button>
@@ -1132,9 +1137,10 @@
 
 <div id="modalChangePass" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
-    <h3 class="text-lg font-bold mb-5">Đổi mật khẩu</h3>
+    <h3 id="cp-title" class="text-lg font-bold mb-5">Đổi mật khẩu</h3>
     <input id="cp-username" type="hidden"/>
     <div class="space-y-3">
+      <div id="cp-old-wrap" class="hidden"><label class="label">Mật khẩu hiện tại *</label><input id="cp-oldpass" type="password" class="input" placeholder="Mật khẩu đang dùng"/></div>
       <div><label class="label">Mật khẩu mới *</label><input id="cp-newpass" type="password" class="input" placeholder="Tối thiểu 6 ký tự"/></div>
       <div><label class="label">Xác nhận lại *</label><input id="cp-confirm" type="password" class="input" placeholder="Nhập lại mật khẩu"/></div>
     </div>
@@ -1333,7 +1339,7 @@ async function loadDashboard(days, from, to) {
 
   try {
     const stats = await api(`/bookings/stats${q}`);
-    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents, pendingCancels } = stats;
+    const { total, new: newB, confirmed, inProgress, completed, cancelled, wellness, unpaid, urgent, dueSoonUnpaid, unconfirmedSoon, openIncidents, declinedServices, pendingCancels } = stats;
 
     // Urgent banner
     const banner = document.getElementById('urgentBanner');
@@ -1353,6 +1359,7 @@ async function loadDashboard(days, from, to) {
       { label:'Chưa thanh toán',   value: unpaid ?? 0,         color:'bg-red-600',    icon:'💳', filter:null, filterPaid:'false' },
       { label:'Sắp KH chưa thu đủ',value: dueSoonUnpaid ?? 0,  color:'bg-rose-700',   icon:'⏳', filter:null, filterPaid:'false' },
       { label:'NCC chưa xác nhận (7N)',value: unconfirmedSoon ?? 0, color:'bg-amber-600', icon:'🤝', filter:null },
+      { label:'NCC báo không nhận',value: declinedServices ?? 0, color:'bg-red-800',  icon:'⛔', filter:null },
       { label:'Sự cố đang mở',     value: openIncidents ?? 0,  color:'bg-red-700',    icon:'🚨', filter:'IN_PROGRESS' },
       { label:'Chờ duyệt huỷ',     value: pendingCancels ?? 0, color:'bg-gray-700',   icon:'🛑', filter:null },
     ];
@@ -2268,6 +2275,8 @@ function renderPayments(b) {
           <span class="text-gray-400 whitespace-nowrap">${rc.date}</span>
           <span>${PAY_METHOD_LABELS[rc.method] || rc.method}</span>
           <strong class="ml-auto whitespace-nowrap">${Number(rc.amount).toLocaleString('vi-VN')}đ</strong>
+          <button data-r="${rc.rcptId}" onclick="printReceipt(this.dataset.r)"
+            class="text-gray-400 hover:text-blue-700" title="In phiếu thu cho khách">🖨</button>
           ${canPay ? `<button data-b="${b.bookingId}" data-r="${rc.rcptId}" onclick="deleteReceipt(this.dataset.b, this.dataset.r)"
             class="text-red-400 hover:text-red-600" title="Xoá lần thu này">✕</button>` : ''}
         </div>
@@ -2309,6 +2318,74 @@ async function deleteReceipt(id, rcptId) {
     toast(res.message);
     showDetail(id);
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// Đọc số tiền VNĐ thành chữ (phiếu thu) — chuẩn kế toán: mốt/lăm/lẻ, nhóm nghìn/triệu/tỷ
+function docSoVN(n) {
+  n = Math.floor(Math.abs(Number(n) || 0));
+  if (n === 0) return 'Không đồng';
+  const chuSo = ['không','một','hai','ba','bốn','năm','sáu','bảy','tám','chín'];
+  function doc3(so, full) {
+    const tram = Math.floor(so/100), chuc = Math.floor((so%100)/10), dv = so%10;
+    let s = '';
+    if (full || tram > 0) { s += chuSo[tram] + ' trăm'; if (chuc === 0 && dv > 0) s += ' lẻ'; }
+    if (chuc > 1) {
+      s += ' ' + chuSo[chuc] + ' mươi';
+      if (dv === 1) s += ' mốt'; else if (dv === 5) s += ' lăm'; else if (dv > 0) s += ' ' + chuSo[dv];
+    } else if (chuc === 1) {
+      s += ' mười';
+      if (dv === 5) s += ' lăm'; else if (dv > 0) s += ' ' + chuSo[dv];
+    } else if (dv > 0) s += ' ' + chuSo[dv];
+    return s.trim();
+  }
+  const donVi = ['', ' nghìn', ' triệu', ' tỷ', ' nghìn tỷ'];
+  const groups = [];
+  while (n > 0) { groups.unshift(n % 1000); n = Math.floor(n / 1000); }
+  const s = groups.map((g, i) => g ? doc3(g, i > 0) + donVi[groups.length - 1 - i] : '')
+    .filter(Boolean).join(' ').trim();
+  return s.charAt(0).toUpperCase() + s.slice(1) + ' đồng';
+}
+
+function printReceipt(rcptId) {
+  const b = window._curBooking;
+  const rc = (b?.payment?.receipts || []).find(x => x.rcptId === rcptId);
+  if (!b || !rc) { toast('Không tìm thấy lần thu', 'error'); return; }
+  const amount = Number(b.payment?.amount || 0);
+  const collected = payCollected(b);
+  const remaining = Math.max(0, amount - collected);
+  const d = new Date(rc.date + 'T00:00:00');
+  const w = window.open('', '_blank', 'width=800,height=650');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Phiếu thu — ${b.bookingId}</title>
+  <style>body{font-family:'Times New Roman',serif;color:#111;padding:28px;max-width:640px;margin:0 auto;font-size:14px}
+  .top{display:flex;justify-content:space-between;font-size:12px;color:#444;margin-bottom:6px}
+  h1{text-align:center;font-size:22px;letter-spacing:2px;margin:10px 0 2px}
+  .sub{text-align:center;font-size:12px;color:#555;margin-bottom:18px}
+  .row{display:flex;margin:7px 0}.row b{flex:1;border-bottom:1px dotted #999;padding-bottom:2px;font-weight:normal}
+  .row span:first-child{width:170px;flex-shrink:0;color:#333}
+  .money{border:1.5px solid #333;border-radius:6px;padding:10px 14px;margin:14px 0;font-size:15px}
+  .sig{display:flex;justify-content:space-between;text-align:center;margin-top:28px;font-size:13px}
+  .sig i{display:block;font-size:11px;color:#666;font-style:italic;margin-top:2px}
+  .sig div{width:45%}.pad{height:64px}
+  .note{font-size:11px;color:#777;margin-top:14px;border-top:1px solid #ddd;padding-top:8px}
+  @media print{body{padding:0}.no-print{display:none}}</style></head><body>
+  <div class="top"><span><strong>BOOKING HUB</strong> — Du lịch &amp; Wellness</span><span>Số phiếu: ${esc(rc.rcptId)}</span></div>
+  <h1>PHIẾU THU</h1>
+  <div class="sub">Ngày ${d.getDate()} tháng ${d.getMonth()+1} năm ${d.getFullYear()}</div>
+  <div class="row"><span>Người nộp tiền:</span><b>${esc(b.customer?.name || '')}</b></div>
+  <div class="row"><span>Số điện thoại:</span><b>${esc(b.customer?.phone || '')}</b></div>
+  <div class="row"><span>Lý do thu:</span><b>Thanh toán tour ${esc(b.product)} — mã đơn ${b.bookingId}${rc.note ? ' (' + esc(rc.note) + ')' : ''}</b></div>
+  <div class="row"><span>Hình thức:</span><b>${PAY_METHOD_LABELS[rc.method] || rc.method}</b></div>
+  <div class="money">Số tiền: <strong>${Number(rc.amount).toLocaleString('vi-VN')} đ</strong><br>
+    <em>Bằng chữ: ${docSoVN(rc.amount)}</em></div>
+  <div class="row"><span>Tổng giá trị đơn:</span><b>${amount.toLocaleString('vi-VN')} đ &nbsp;·&nbsp; Đã thu (kể cả phiếu này): ${collected.toLocaleString('vi-VN')} đ &nbsp;·&nbsp; Còn lại: ${remaining.toLocaleString('vi-VN')} đ</b></div>
+  <div class="sig">
+    <div>NGƯỜI NỘP TIỀN<i>(Ký, họ tên)</i><div class="pad"></div></div>
+    <div>NGƯỜI THU TIỀN<i>(Ký, họ tên)</i><div class="pad"></div>${esc(rc.name || rc.by || '')}</div>
+  </div>
+  <div class="note">Tra cứu trạng thái đơn: mở trang tra cứu của công ty và nhập mã đơn <strong>${b.bookingId}</strong> cùng số điện thoại đặt tour.</div>
+  <div class="no-print" style="margin-top:16px;text-align:center"><button onclick="window.print()" style="background:#1F3864;color:#fff;border:none;padding:10px 32px;border-radius:8px;font-size:14px;cursor:pointer">🖨 In phiếu thu</button></div>
+  </body></html>`);
+  w.document.close();
 }
 
 function copyBrief() {
@@ -4049,6 +4126,15 @@ async function copyPortalLink() {
   catch { document.getElementById('pk-url').select(); document.execCommand('copy'); toast('Đã copy link'); }
 }
 
+async function emailPortalLink() {
+  const nccId = document.getElementById('pk-id').value;
+  try {
+    const res = await api(`/suppliers/${nccId}/portal-key`, { method:'POST', body: JSON.stringify({ sendEmail: true }) });
+    if (res.emailResult?.startsWith('đã gửi')) toast('📧 ' + res.emailResult);
+    else toast(res.emailResult || 'Không gửi được', 'warn');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 async function regenPortalKey() {
   if (!confirm('Tạo link mới? Link cũ đã gửi cho NCC sẽ HẾT hiệu lực ngay.')) return;
   const nccId = document.getElementById('pk-id').value;
@@ -5021,7 +5107,12 @@ async function openZaloFollowers() {
 }
 
 function openChangePass(username) {
+  const isSelf = username === USER.username;
+  document.getElementById('cp-title').textContent = isSelf ? 'Đổi mật khẩu của tôi' : `Đổi mật khẩu — ${username}`;
   document.getElementById('cp-username').value = username;
+  // Tự đổi (kể cả CEO) phải nhập mật khẩu hiện tại — server bắt buộc
+  document.getElementById('cp-old-wrap').classList.toggle('hidden', !isSelf);
+  document.getElementById('cp-oldpass').value = '';
   document.getElementById('cp-newpass').value = '';
   document.getElementById('cp-confirm').value = '';
   document.getElementById('changePassError').classList.add('hidden');
@@ -5035,10 +5126,12 @@ async function submitChangePass() {
   const errEl    = document.getElementById('changePassError');
   if (newPass.length < 6) { errEl.textContent = 'Tối thiểu 6 ký tự'; errEl.classList.remove('hidden'); return; }
   if (newPass !== confirm) { errEl.textContent = 'Mật khẩu xác nhận không khớp'; errEl.classList.remove('hidden'); return; }
+  const body = { newPassword: newPass };
+  if (username === USER.username) body.oldPassword = document.getElementById('cp-oldpass').value;
   try {
-    await api(`/users/${username}/password`, { method:'PATCH', body: JSON.stringify({newPassword: newPass}) });
+    await api(`/users/${username}/password`, { method:'PATCH', body: JSON.stringify(body) });
     closeModal('modalChangePass');
-    toast(`Đã đổi mật khẩu cho ${username}`);
+    toast(username === USER.username ? 'Đã đổi mật khẩu của bạn' : `Đã đổi mật khẩu cho ${username}`);
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 

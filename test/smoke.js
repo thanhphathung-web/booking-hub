@@ -428,6 +428,44 @@ async function login(username, password) {
       check('key mới hoạt động', r.status === 200);
       r = await req('GET', '/ncc');
       check('trang /ncc phục vụ được', r.status === 200);
+
+      // NCC báo không nhận → đếm vào stats.declinedServices (card dashboard)
+      r = await req('POST', `/api/bookings/${pid}/services`, { token: nvdh,
+        body: { category: 'XE', desc: 'Xe 29 cho', nccId } });
+      const dsvcId = r.data.service.svcId;
+      await req('POST', '/api/ncc-portal/decline', { body: { key: newKey, bookingId: pid, svcId: dsvcId, reason: 'Het xe' } });
+      r = await req('GET', '/api/bookings/stats', { token: ceo });
+      check('stats.declinedServices đếm dịch vụ NCC báo không nhận', r.data.declinedServices >= 1, String(r.data.declinedServices));
+
+      // Gửi link cổng qua email khi mail chưa cấu hình → skip êm, không lỗi
+      r = await req('POST', `/api/suppliers/${nccId}/portal-key`, { token: ceo, body: { sendEmail: true } });
+      check('sendEmail khi mail chưa cấu hình → skip êm', r.status === 200 && String(r.data.emailResult || '').startsWith('skip'));
+    }
+
+    console.log('\n— Đổi mật khẩu (self cần pass cũ) —');
+    {
+      r = await req('PATCH', '/api/users/nvdh/password', { token: nvdh, body: { newPassword: 'nvdh456' } });
+      check('tự đổi thiếu mật khẩu cũ → 401', r.status === 401);
+      r = await req('PATCH', '/api/users/nvdh/password', { token: nvdh, body: { oldPassword: 'sai-pass', newPassword: 'nvdh456' } });
+      check('tự đổi sai mật khẩu cũ → 401', r.status === 401);
+      r = await req('PATCH', '/api/users/nvdh/password', { token: nvdh, body: { oldPassword: 'nvdh123', newPassword: 'nvdh456' } });
+      check('tự đổi đúng mật khẩu cũ → OK', r.status === 200);
+      const relogin = await login('nvdh', 'nvdh456');
+      check('login bằng mật khẩu mới được', !!relogin);
+      r = await req('PATCH', '/api/users/nvdh/password', { token: ceo, body: { newPassword: 'nvdh123' } });
+      check('CEO đổi cho người khác không cần pass cũ', r.status === 200);
+      r = await req('PATCH', '/api/users/ceo/password', { token: nvdh, body: { oldPassword: 'x', newPassword: 'hacked1' } });
+      check('NVDH đổi pass người khác → 403', r.status === 403);
+      const back = await login('nvdh', 'nvdh123');
+      check('mật khẩu đã trả về như cũ', !!back);
+    }
+
+    console.log('\n— Security headers —');
+    {
+      const res = await fetch(BASE + '/api/health');
+      check('X-Content-Type-Options: nosniff', res.headers.get('x-content-type-options') === 'nosniff');
+      check('X-Frame-Options: SAMEORIGIN', res.headers.get('x-frame-options') === 'SAMEORIGIN');
+      check('Referrer-Policy có đặt', !!res.headers.get('referrer-policy'));
     }
 
     console.log('\n— Chương trình tour + rooming —');

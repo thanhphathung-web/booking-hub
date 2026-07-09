@@ -115,7 +115,28 @@ router.post('/:id/portal-key', ...requirePerm('ncc:manage'), async (req, res) =>
         to: req.params.id, by: req.user.username, at: new Date().toISOString() });
     }
     const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    res.json({ portalKey: key, portalUrl: `${base}/ncc?key=${key}`,
+    const portalUrl = `${base}/ncc?key=${key}`;
+
+    // sendEmail=true → gửi thẳng link cho NCC qua email (skip êm nếu thiếu email/mail)
+    let emailResult = null;
+    if (req.body.sendEmail === true) {
+      const mailer = require('../services/mailer');
+      if (!supplier.email)             emailResult = 'skip: NCC chưa có email — thêm email trong ✏️ Sửa';
+      else if (!mailer.isConfigured()) emailResult = 'skip: mail chưa cấu hình';
+      else {
+        try {
+          await mailer.send(supplier.email, `🤝 [Booking Hub] Link cổng đối tác cho ${supplier.name}`, [
+            `Chào ${supplier.contact || supplier.name},`, '',
+            `Đây là link cổng đối tác riêng của bạn — mở là thấy các dịch vụ chúng tôi đang đặt,`,
+            `bấm xác nhận giữ chỗ và nhập số voucher trực tiếp:`, '',
+            portalUrl, '',
+            `Link dành riêng cho bạn, vui lòng không chia sẻ.`,
+          ].join('\n'));
+          emailResult = `đã gửi tới ${supplier.email}`;
+        } catch (e) { emailResult = 'lỗi: ' + e.message; }
+      }
+    }
+    res.json({ portalKey: key, portalUrl, emailResult,
       message: req.body.regenerate ? 'Đã tạo link mới — link cũ hết hiệu lực' : 'Link cổng NCC' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

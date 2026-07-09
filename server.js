@@ -22,6 +22,16 @@ app.set('trust proxy', true);
 
 // ── Middleware ────────────────────────────────────────────
 app.use(cors());
+// Security headers cơ bản (không dùng CSP vì SPA inline script + Tailwind CDN)
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');       // chặn MIME sniffing
+  res.set('X-Frame-Options', 'SAMEORIGIN');           // chặn nhúng iframe trang khác (clickjacking)
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https')
+    res.set('Strict-Transport-Security', 'max-age=15552000'); // 180 ngày — chỉ khi đã HTTPS
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));

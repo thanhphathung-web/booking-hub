@@ -40,12 +40,19 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/users/:username/password
+// CEO đổi cho người khác không cần mật khẩu cũ (quên pass); TỰ đổi của mình
+// (kể cả CEO) phải nhập đúng mật khẩu hiện tại — chặn người lạ ngồi vào máy đang mở
 router.patch('/:username/password', requireAuth, async (req, res) => {
-  // CEO can change anyone's, others can only change their own
-  if (req.user.role !== 'CEO' && req.user.username !== req.params.username)
+  const isSelf = req.user.username === req.params.username;
+  if (req.user.role !== 'CEO' && !isSelf)
     return res.status(403).json({ error: 'Không có quyền' });
-  const { newPassword } = req.body;
+  const { newPassword, oldPassword } = req.body;
   if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Mật khẩu tối thiểu 6 ký tự' });
+  if (isSelf) {
+    const me = await dbAsync.findOne('users', { username: req.user.username });
+    const ok = me && await bcrypt.compare(String(oldPassword || ''), me.password);
+    if (!ok) return res.status(401).json({ error: 'Mật khẩu hiện tại không đúng' });
+  }
   const hash = await bcrypt.hash(newPassword, 10);
   await dbAsync.update('users', { username: req.params.username }, { $set: { password: hash } });
   res.json({ message: 'Đã đổi mật khẩu' });

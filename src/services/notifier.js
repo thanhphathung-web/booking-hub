@@ -89,6 +89,24 @@ function buildSvcPortalMsg(b, svc, supplier, action) {
   return { subject, text };
 }
 
+function buildSupplierRequestMsg(b, svc, supplier) {
+  const subject = `🤝 [Booking Hub] Yêu cầu giữ chỗ mới: ${svc.desc}`;
+  const portalLink = supplier.portalKey ? `${appUrl()}/ncc?key=${supplier.portalKey}` : null;
+  const text = [
+    `Chào ${supplier.contact || supplier.name},`, '',
+    `Chúng tôi vừa gửi 1 yêu cầu giữ chỗ mới:`,
+    `• Dịch vụ: ${svc.desc}`,
+    `• Ngày tour: ${b.tourDate}`,
+    `• Số khách: ${(b.adults || 0) + (b.children || 0)}`,
+    svc.note ? `• Ghi chú: ${svc.note}` : '',
+    '',
+    portalLink
+      ? `Vui lòng mở cổng đối tác để xác nhận giữ chỗ và nhập số voucher:\n${portalLink}`
+      : `Vui lòng liên hệ điều hành tour để xác nhận giữ chỗ.`,
+  ].filter(x => x !== '').join('\n');
+  return { subject, text };
+}
+
 // ── Sự kiện ───────────────────────────────────────────────
 // Đánh giá tệ sau tour → báo quản lý (CEO + TPDH) để chăm sóc, đóng vòng dịch vụ
 async function notifyNegativeReview(booking, review) {
@@ -124,6 +142,20 @@ async function notifyIncident(booking, incident, reporterName) {
   } catch (e) { return { error: e.message }; }
 }
 
+// Thêm dịch vụ gắn NCC → email cho NCC ngay (kèm link cổng nếu đã có) — skip êm nếu thiếu email/mail
+async function notifySupplierNewRequest(booking, svc) {
+  try {
+    if (!svc.nccId) return null;
+    const supplier = await dbAsync.findOne('suppliers', { nccId: svc.nccId, active: true });
+    if (!supplier) return null;
+    if (!supplier.email)        return { nccId: svc.nccId, email: 'skip: NCC chưa có email' };
+    if (!mailer.isConfigured()) return { nccId: svc.nccId, email: 'skip: mail chưa cấu hình' };
+    const { subject, text } = buildSupplierRequestMsg(booking, svc, supplier);
+    try { await mailer.send(supplier.email, subject, text); return { nccId: svc.nccId, email: 'đã gửi' }; }
+    catch (e) { return { nccId: svc.nccId, email: 'lỗi: ' + e.message }; }
+  } catch (e) { return { error: e.message }; }
+}
+
 // NCC thao tác trên cổng NCC (xác nhận / báo không nhận) → báo quản lý (CEO + TPDH)
 async function notifySvcPortal(booking, svc, supplier, action) {
   try {
@@ -137,5 +169,6 @@ async function notifySvcPortal(booking, svc, supplier, action) {
 
 module.exports = {
   channelStatus, notifyUser, notifyAssignment, notifyIncident, notifyNegativeReview, notifySvcPortal,
-  buildAssignmentMsg, buildIncidentMsg, buildNegativeReviewMsg, buildSvcPortalMsg,
+  notifySupplierNewRequest,
+  buildAssignmentMsg, buildIncidentMsg, buildNegativeReviewMsg, buildSvcPortalMsg, buildSupplierRequestMsg,
 };
