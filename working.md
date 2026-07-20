@@ -6,6 +6,14 @@ Tài liệu làm việc: trạng thái hiện tại, việc vừa làm, todo cò
 
 ---
 
+## Phiên 2026-07-20 — không có thay đổi code booking-hub
+
+- Kiểm tra lại trạng thái dự án: `npm test` → vẫn **199 pass, 0 fail**. Không commit, không sửa file code nào trong phiên này.
+- **Lỗi môi trường phát hiện + đã sửa:** `git.exe` không chạy được (báo "not a valid application for this OS platform") — nguyên nhân thật là bản cài **ARM64** trên máy **x64** (không phải virus/hỏng file). Sửa bằng `winget upgrade --id Git.Git -e --source winget` → cài lại đúng bản x64 (2.55.0.3), `git status`/`git commit` chạy lại bình thường. Bash tool vẫn còn lỗi `uv_spawn` riêng, chưa rõ nguyên nhân — dùng PowerShell thay thế được.
+- Phần lớn phiên dành làm việc **ngoài phạm vi booking-hub**: dựng công cụ quản lý cho phòng kế toán công ty TPP (dự án khác, không liên quan code repo này), dựa trên `TONG_HOP_DU_AN_TPP.md`. Chi tiết + link công cụ xem `TPP_KETOAN_TIEN_DO.md` (cùng thư mục) — không ghi lại ở đây vì không thuộc booking-hub.
+
+---
+
 ## 0. TRẠNG THÁI HIỆN TẠI (TL;DR)
 
 - **Bản live:** https://booking-hub-production.up.railway.app — commit `9f8e1b8`, sw `bh-v3`, đã verify (mục 4).
