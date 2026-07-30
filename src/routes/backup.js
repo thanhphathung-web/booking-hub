@@ -3,10 +3,10 @@ const { requireAuth } = require('../middleware/auth');
 const { createBackupArchive, sendBackupEmail } = require('../services/backup');
 
 // GET /api/backup/download (CEO only) — tải file backup .json.gz ngay lập tức
-router.get('/download', requireAuth, (req, res) => {
+router.get('/download', requireAuth, async (req, res) => {
   if (req.user.role !== 'CEO') return res.status(403).json({ error: 'CEO only' });
   try {
-    const { filename, buffer } = createBackupArchive();
+    const { filename, buffer } = await createBackupArchive();
     res.setHeader('Content-Type', 'application/gzip');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);

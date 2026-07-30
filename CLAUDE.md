@@ -26,16 +26,46 @@ Hệ sinh thái 3 công ty:
 
 ---
 
+## Trạng thái deploy
+- **Production:** https://booking.baggio.website — Vercel (project `booking-hub-baggio`, team `baggio86`)
+  + Supabase Postgres (project `internal-tools`, schema `booking`) — chuyển từ Railway 2026-07-30
+  (Railway thu phí, không còn free tier). `DEPLOY.md` mô tả setup Railway CŨ, giữ tham khảo lịch sử.
+- `server.js` export Express app; `api/index.js` bọc làm Vercel serverless function; `vercel.json`
+  rewrite mọi path về function đó (`"framework": null` — bắt buộc, tránh Vercel tự detect "services").
+- `seed()`/`seedChecklists()` chạy ở module scope (không phải trong `require.main===module`) — cần
+  thiết cho Vercel `require()` app; idempotent nên vô hại nếu DB đã có dữ liệu.
+- **Cron:** node-cron trong process CHỈ chạy khi `!process.env.VERCEL` (local/host khác). Trên Vercel,
+  lịch thật khai báo trong `vercel.json` "crons" → gọi `src/routes/cron.js` (digest 07:30 ICT =
+  `30 0 * * *` UTC, comms 08:00 ICT = `0 1 * * *`, backup 02:00 ICT = `0 19 * * *`), bảo vệ bằng
+  header `Authorization: Bearer $CRON_SECRET` (Vercel tự đính kèm khi gọi cron đã khai báo).
+- Email/Zalo/webhook CTY2/Sentry: **chưa cấu hình trên Vercel** (Railway trước đây cũng không có gì
+  đặt thêm ngoài JWT_SECRET/PORT/NODE_ENV theo xác nhận lúc migrate) — mọi chỗ dùng đều tự "skip êm",
+  không phải lỗi. Set `RESEND_API_KEY`/`SMTP_*`/`WEBHOOK_API_KEY`/`ZALO_*`/`SENTRY_DSN` qua
+  `vercel env add` khi cần bật lại.
+- Deploy lại: `vercel --prod --scope baggio86` từ thư mục booking-hub.
+
+---
+
 ## Tech Stack
 
 ```
 Backend:  Node.js + Express 5
-Database: NeDB qua @seald-io/nedb (fork được bảo trì — pure JS, file-based NoSQL, MongoDB-like API)
+Database: PostgreSQL (Supabase, project internal-tools, schema "booking") — 1 bảng/collection,
+          cột `doc JSONB`. Chuyển từ NeDB sang 2026-07-30 (Railway thu phí, không còn free tier).
 Auth:     JWT (jsonwebtoken) + bcryptjs
 Frontend: Single HTML file (SPA) + Tailwind CSS CDN
 ```
 
-**Lý do chọn NeDB:** Pure JavaScript, không cần compile native module, chạy được mọi nơi. Phù hợp MVP. Khi scale → migrate sang MongoDB (API tương tự).
+**dbAsync giữ NGUYÊN interface cũ thời NeDB** (`find/findOne/insert/update/remove/count/findPage`,
+cú pháp query/update kiểu Mongo: `$set/$push/$gte/$lte/$gt/$lt/$ne/$in/$nin/$exists/$or`, dot-path
+`'a.b'`) — xem `src/db/database.js`. Route/service code ở trên KHÔNG đổi gì khi migrate. Toán tử nào
+KHÔNG có trong danh sách trên (`$inc`, `$pull`, `$elemMatch`, `multi:true`...) chưa được implement —
+rà lại `matchValue`/`applyUpdate` nếu thêm code dùng toán tử mới.
+Query/update chạy kiểu "load hết bảng vào Node rồi filter/sort trong JS" (giống hệt cách NeDB tự vận
+hành) — chấp nhận được vì quy mô dữ liệu nhỏ (1 công ty lữ hành); KHÔNG dùng cách này nếu 1 bảng lên
+hàng trăm nghìn dòng.
+Test cách ly bằng `PGSCHEMA=<tên schema tạm>` (xem `test/smoke.js`) — tương đương `DATA_DIR` tạm
+của NeDB trước đây, KHÔNG đụng schema `booking` thật.
 
 **Không dùng:** React, Vue, TypeScript, Webpack, bất kỳ bundler nào. Keep it simple.
 
@@ -53,7 +83,8 @@ booking-hub/
 │   └── index.html            # Toàn bộ admin panel (SPA ~800 lines)
 └── src/
     ├── db/
-    │   ├── database.js       # NeDB datastores + Promise wrappers (dbAsync)
+    │   ├── pool.js           # Pool pg (Postgres/Supabase, schema "booking")
+    │   ├── database.js       # dbAsync trên JSONB — thay NeDB, giữ nguyên interface cũ
     │   └── seed.js           # Tạo 7 default users lần đầu chạy
     ├── middleware/
     │   └── auth.js           # requireAuth + requirePerm + ROLE_PERMISSIONS
@@ -515,13 +546,13 @@ curl -s -X POST http://localhost:3000/api/auth/login \
 
 ## Vấn đề đã biết / Quirks
 
-1. **NeDB warnings** khi chạy: `util.isDate is not a function` — không phải lỗi, chỉ là deprecation warning của thư viện cũ. Fix đã có trong `server.js` (polyfill util).
+1. **Express 5** không hỗ trợ wildcard `'*'` — dùng `'/{*splat}'` cho SPA fallback.
 
-2. **Express 5** không hỗ trợ wildcard `'*'` — dùng `'/{*splat}'` cho SPA fallback.
+2. **Fire-and-forget ghi DB trước khi trả response** rủi ro race qua Postgres mạng (không còn "miễn phí"
+   như NeDB in-memory) — nếu route ghi xong thứ mà request theo sau ngay lập tức cần đọc lại, PHẢI
+   `await` (xem `src/routes/reviews.js` — bài học từ khi migrate, đã sửa 1 chỗ y hệt).
 
-3. **NeDB không hỗ trợ** `$push` trực tiếp trên array lồng nhau — dùng `findOne` → modify → `update` nếu cần.
-
-4. **Mỗi bash call độc lập** trong sandbox Claude — server không giữ giữa các lần gọi.
+3. **Mỗi bash call độc lập** trong sandbox Claude — server không giữ giữa các lần gọi.
 
 ---
 

@@ -62,7 +62,9 @@ router.post('/', rateLimit, async (req, res) => {
     if (review.followUp.needed) {
       const note = { text: `⚠️ Đánh giá thấp từ khách: ${stars}★${nps != null ? ` · NPS ${nps}` : ''}${comment ? ` — "${comment}"` : ''}`,
         by: 'system', name: 'Hệ thống đánh giá', at: now };
-      dbAsync.update('bookings', { bookingId }, { $push: { notes: note } }).catch(() => {});
+      // Đợi ghi note xong (Postgres qua mạng có độ trễ thật, khác NeDB in-memory trước đây) —
+      // để GET booking ngay sau response này luôn thấy note. Notifier vẫn fire-and-forget (side-effect phụ).
+      await dbAsync.update('bookings', { bookingId }, { $push: { notes: note } }).catch(() => {});
       notifier.notifyNegativeReview(b, review).catch(() => {});
     }
     res.status(201).json({ message: 'Cảm ơn bạn đã đánh giá!', reviewId: saved.reviewId });

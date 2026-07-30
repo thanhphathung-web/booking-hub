@@ -1,21 +1,21 @@
-// Backup toàn bộ data/ (NeDB + zalo token) thành 1 file .json.gz
-// Gửi qua email mỗi đêm (cron trong server.js) — bản lưu nằm NGOÀI volume Railway
+// Backup toàn bộ dữ liệu Postgres (schema "booking") thành 1 file .json.gz
+// Gửi qua email mỗi đêm (cron trong server.js).
 // Khôi phục: node scripts/restore-backup.js <file.json.gz>
-const fs = require('fs');
-const path = require('path');
+// Định dạng bundle giữ NGUYÊN như thời NeDB ({app, createdAt, files: {'<collection>.db': '<NDJSON>'}})
+// dù nguồn giờ là Postgres — tương thích ngược với backup cũ + không phải sửa test.
 const zlib = require('zlib');
 const mailer = require('./mailer');
+const { pool } = require('../db/pool');
+const { SCHEMA, COLLECTIONS } = require('../db/database');
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
 const MAX_EMAIL_BYTES = 35 * 1024 * 1024; // Resend giới hạn ~40MB/request
 
-// Trả về { filename, buffer } — bundle JSON của mọi file trong data/, nén gzip
-function createBackupArchive() {
+// Trả về { filename, buffer } — bundle JSON của mọi collection trong Postgres, nén gzip
+async function createBackupArchive() {
   const files = {};
-  for (const name of fs.readdirSync(DATA_DIR)) {
-    const full = path.join(DATA_DIR, name);
-    if (!fs.statSync(full).isFile()) continue;
-    files[name] = fs.readFileSync(full, 'utf8');
+  for (const coll of COLLECTIONS) {
+    const { rows } = await pool.query(`SELECT doc FROM "${SCHEMA}"."${coll}" ORDER BY id`);
+    files[`${coll}.db`] = rows.map((r) => JSON.stringify(r.doc)).join('\n');
   }
   const bundle = JSON.stringify({
     app: 'booking-hub', createdAt: new Date().toISOString(), files,
@@ -32,7 +32,7 @@ async function sendBackupEmail() {
   const to = process.env.BACKUP_EMAIL || process.env.SMTP_USER;
   if (!to) return { sent: false, reason: 'Chưa có BACKUP_EMAIL / SMTP_USER để nhận backup' };
 
-  const { filename, buffer } = createBackupArchive();
+  const { filename, buffer } = await createBackupArchive();
   if (buffer.length > MAX_EMAIL_BYTES) {
     await mailer.send(to, '⚠️ [Booking Hub] Backup quá lớn để gửi email',
       `File backup ${filename} nặng ${(buffer.length / 1048576).toFixed(1)}MB — vượt giới hạn email.\n`

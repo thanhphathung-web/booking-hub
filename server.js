@@ -1,8 +1,3 @@
-const util = require('util');
-if (!util.isDate)   util.isDate   = (d) => d instanceof Date;
-if (!util.isArray)  util.isArray  = Array.isArray;
-if (!util.isRegExp) util.isRegExp = (r) => r instanceof RegExp;
-
 // Railway không route IPv6 ra ngoài — ép Node ưu tiên IPv4 khi resolve DNS
 // (không có dòng này: kết nối smtp.gmail.com chọn IPv6 → ENETUNREACH)
 require('dns').setDefaultResultOrder('ipv4first');
@@ -36,6 +31,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Phải chạy cả khi Vercel require() app này làm serverless function (không đi qua app.listen()
+// bên dưới) — đặt ở module scope, mọi request chờ xong mới vào route. Idempotent (seed tự no-op
+// nếu đã có user/checklist) nên an toàn chạy lại mỗi cold start.
+const readyPromise = Promise.resolve()
+  .then(() => seed())
+  .then(() => seedChecklists())
+  .catch((e) => console.error('seed lỗi:', e.message));
+app.use((req, res, next) => { readyPromise.then(() => next()); });
+
 // ── API Routes ────────────────────────────────────────────
 app.use('/api/auth',     require('./src/routes/auth'));
 app.use('/api/bookings', require('./src/routes/bookings'));
@@ -54,6 +58,7 @@ app.use('/api/notify',     require('./src/routes/notify'));
 app.use('/api/departures', require('./src/routes/departures'));
 app.use('/api/reviews',    require('./src/routes/reviews'));
 app.use('/api/ncc-portal', require('./src/routes/nccPortal'));
+app.use('/api/cron',       require('./src/routes/cron'));
 
 // Health check — dùng làm target cho uptime monitor ngoài (UptimeRobot...)
 const errorLog = require('./src/services/errorLog');
@@ -120,43 +125,47 @@ app.use((err, req, res, next) => {
 process.on('unhandledRejection', (reason) => errorLog.capture(reason, { source: 'unhandledRejection' }));
 process.on('uncaughtException',  (err)    => errorLog.capture(err,    { source: 'uncaughtException' }));
 
-// ── Email digest nhắc việc 07:30 sáng (giờ VN) ───────────
-const cron = require('node-cron');
-const { sendDailyDigest } = require('./src/services/digest');
-cron.schedule('30 7 * * *', async () => {
-  console.log('[digest] Gửi email nhắc việc buổi sáng...');
-  try {
-    const results = await sendDailyDigest();
-    console.log('[digest]', JSON.stringify(results));
-  } catch (e) { console.error('[digest] Lỗi:', e.message); }
-}, { timezone: 'Asia/Ho_Chi_Minh' });
+// ── Cron nội bộ (node-cron) — CHỈ chạy khi host truyền thống (Railway/local), process sống liên
+// tục. Trên Vercel serverless việc này vô tác dụng (process không tồn tại giữa các request) →
+// lịch thật trên Vercel nằm ở `vercel.json` "crons" gọi vào src/routes/cron.js. Không xoá khối này
+// vì vẫn cần cho local dev / host khác nếu quay lại.
+if (!process.env.VERCEL) {
+  const cron = require('node-cron');
+  const { sendDailyDigest } = require('./src/services/digest');
+  cron.schedule('30 7 * * *', async () => {
+    console.log('[digest] Gửi email nhắc việc buổi sáng...');
+    try {
+      const results = await sendDailyDigest();
+      console.log('[digest]', JSON.stringify(results));
+    } catch (e) { console.error('[digest] Lỗi:', e.message); }
+  }, { timezone: 'Asia/Ho_Chi_Minh' });
 
-// ── Giao tiếp khách tự động 08:00 sáng (giờ VN) — nhắc T-3 + cảm ơn sau tour ──
-const { runDaily: runCustomerComms } = require('./src/services/customerComms');
-cron.schedule('0 8 * * *', async () => {
-  console.log('[comms] Quét gửi nhắc T-3 + cảm ơn sau tour...');
-  try {
-    const r = await runCustomerComms();
-    console.log('[comms]', JSON.stringify(r));
-  } catch (e) { console.error('[comms] Lỗi:', e.message); }
-}, { timezone: 'Asia/Ho_Chi_Minh' });
+  const { runDaily: runCustomerComms } = require('./src/services/customerComms');
+  cron.schedule('0 8 * * *', async () => {
+    console.log('[comms] Quét gửi nhắc T-3 + cảm ơn sau tour...');
+    try {
+      const r = await runCustomerComms();
+      console.log('[comms]', JSON.stringify(r));
+    } catch (e) { console.error('[comms] Lỗi:', e.message); }
+  }, { timezone: 'Asia/Ho_Chi_Minh' });
 
-// ── Backup dữ liệu 02:00 sáng (giờ VN) — gửi data/ nén gzip qua email ──
-cron.schedule('0 2 * * *', async () => {
-  console.log('[backup] Tạo backup đêm...');
-  try {
-    const r = await require('./src/services/backup').sendBackupEmail();
-    console.log('[backup]', JSON.stringify(r));
-  } catch (e) { console.error('[backup] Lỗi:', e.message); }
-}, { timezone: 'Asia/Ho_Chi_Minh' });
+  cron.schedule('0 2 * * *', async () => {
+    console.log('[backup] Tạo backup đêm...');
+    try {
+      const r = await require('./src/services/backup').sendBackupEmail();
+      console.log('[backup]', JSON.stringify(r));
+    } catch (e) { console.error('[backup] Lỗi:', e.message); }
+  }, { timezone: 'Asia/Ho_Chi_Minh' });
+}
 
-// ── Start ─────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  console.log(`\n🚀 Booking Hub running on http://localhost:${PORT}`);
-  console.log(`   API:   http://localhost:${PORT}/api/health`);
-  console.log(`   Admin: http://localhost:${PORT}/\n`);
-  await seed();
-  await seedChecklists();
-});
+// ── Start (chỉ khi chạy trực tiếp `node server.js` — Vercel require() app làm serverless function,
+// không gọi listen) ──────────────────────────────────────
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Booking Hub running on http://localhost:${PORT}`);
+    console.log(`   API:   http://localhost:${PORT}/api/health`);
+    console.log(`   Admin: http://localhost:${PORT}/\n`);
+  });
+}
 
 module.exports = app;

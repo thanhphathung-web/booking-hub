@@ -3,3 +3,6 @@ data/
 .env
 *.log
 *.local.txt
+
+.vercel
+.env*

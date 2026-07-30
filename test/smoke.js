@@ -1,8 +1,6 @@
 // Smoke test — chạy server thật trên DB tạm, kiểm tra các luồng chính end-to-end
 // Chạy: npm test (không đụng data/ thật)
 const { spawn } = require('child_process');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const PORT = 3999;
@@ -36,11 +34,13 @@ async function login(username, password) {
 }
 
 (async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-smoke-'));
-  console.log('DB tạm:', dataDir);
+  // Schema Postgres tạm (thay thư mục NeDB tạm trước đây) — cách ly hoàn toàn dữ liệu thật,
+  // xoá sạch ở finally bên dưới dù test pass hay fail.
+  const testSchema = 'booking_smoke_' + Date.now().toString(36);
+  console.log('Schema tạm:', testSchema);
   const server = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT, DATA_DIR: dataDir, JWT_SECRET: 'smoke-secret',
+    env: { ...process.env, PORT, PGSCHEMA: testSchema, JWT_SECRET: 'smoke-secret',
       WEBHOOK_API_KEY: WEBHOOK_KEY, SMTP_HOST: '', ZALO_APP_ID: '', ENABLE_TEST_ERROR: '1' },
     stdio: 'ignore',
   });
@@ -804,7 +804,11 @@ async function login(username, password) {
     console.error('\n💥 Lỗi:', e.message);
   } finally {
     server.kill();
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (e) { /* Windows file lock */ }
+    try {
+      const { pool } = require('../src/db/pool');
+      await pool.query(`DROP SCHEMA IF EXISTS "${testSchema}" CASCADE`);
+      await pool.end();
+    } catch (e) { console.error('Dọn schema tạm lỗi (bỏ qua):', e.message); }
   }
 
   console.log(`\n════ KẾT QUẢ: ${passed} pass, ${failed} fail ════`);
