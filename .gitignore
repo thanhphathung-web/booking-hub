@@ -6,3 +6,6 @@ data/
 
 .vercel
 .env*
+
+# File backup cục bộ (khong commit)
+*_backup_*

@@ -2,6 +2,12 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
 
+// Dùng bởi server.js (checkProdConfig) để CHẶN khởi động khi secret yếu/mặc định.
+// Secret yếu → bất kỳ ai cũng tự ký được token giả mạo CEO, đọc/sửa mọi booking.
+function isWeakSecret(s) {
+  return !s || s.length < 24 || /dev_secret|replace_with|change|doi-chuoi/.test(s);
+}
+
 // Roles allowed per route
 const ROLE_PERMISSIONS = {
   CEO:    ['*'],
@@ -47,4 +53,4 @@ function requirePerm(perm) {
   }];
 }
 
-module.exports = { requireAuth, requirePerm, JWT_SECRET };
+module.exports = { requireAuth, requirePerm, JWT_SECRET, isWeakSecret };

@@ -9,6 +9,18 @@ const path    = require('path');
 const seed           = require('./src/db/seed');
 const seedChecklists = require('./src/db/seed_checklists');
 
+const { isWeakSecret } = require('./src/middleware/auth');
+
+// Chặn khởi động khi cấu hình bảo mật không an toàn cho production.
+// JWT_SECRET yếu/mặc định → ai cũng tự ký được token giả mạo CEO — không thể chỉ
+// cảnh báo rồi chạy tiếp. Chạy ở module scope để Vercel (serverless, không gọi
+// app.listen) cũng kiểm tra mỗi cold start; thiếu secret thì function 500 thay vì
+// chạy với token giả mạo được.
+if (process.env.NODE_ENV === 'production' && isWeakSecret(process.env.JWT_SECRET || '')) {
+  console.error('✗ JWT_SECRET yếu/mặc định — BẮT BUỘC đặt chuỗi ngẫu nhiên ≥24 ký tự cho production. Dừng khởi động.');
+  process.exit(1);
+}
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 // Railway có nhiều lớp edge proxy — trust cả chain để req.ip = IP thật của client
